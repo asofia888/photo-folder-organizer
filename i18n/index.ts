@@ -54,6 +54,19 @@ export const translations = {
     disclaimerContent: "This application is provided 'as is'. The developer is not responsible for any loss or alteration of data that may occur from its use. Please ensure you have backups of your important files before proceeding.",
     close: 'Close',
     userManual: 'User Manual',
+    // File System Operations
+    organizeToComputer: 'Organize to Computer',
+    organizingPhotos: 'Organizing Photos',
+    organizationComplete: 'Organization Complete',
+    preparing: 'Preparing...',
+    creatingFolders: 'Creating folders...',
+    movingFiles: 'Moving files...',
+    completed: 'Completed',
+    error: 'Error',
+    cancel: 'Cancel',
+    processing: 'Processing',
+    fileSystemNotSupported: 'File System Access is not supported in this browser',
+    selectTargetFolder: 'Select target folder to organize photos',
   },
   ja: {
     appTitle: '写真フォルダ整理アプリ',
@@ -108,6 +121,19 @@ export const translations = {
     disclaimerContent: 'このアプリケーションは「現状有姿」で提供されます。本アプリケーションの使用によって生じたいかなるデータの損失や変更についても、開発者は責任を負いません。続行する前に、重要なファイルのバックアップがあることを確認してください。',
     close: '閉じる',
     userManual: '使い方マニュアル',
+    // File System Operations
+    organizeToComputer: 'コンピューターに整理',
+    organizingPhotos: '写真を整理中',
+    organizationComplete: '整理完了',
+    preparing: '準備中...',
+    creatingFolders: 'フォルダ作成中...',
+    movingFiles: 'ファイル移動中...',
+    completed: '完了',
+    error: 'エラー',
+    cancel: 'キャンセル',
+    processing: '処理中',
+    fileSystemNotSupported: 'このブラウザではファイルシステムアクセスがサポートされていません',
+    selectTargetFolder: '写真を整理する対象フォルダを選択してください',
   }
 };
 

@@ -2,9 +2,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import FolderCard from './FolderCard';
 import Spinner from './Spinner';
-import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon } from './Icons';
+import ProgressModal from './ProgressModal';
+import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon, ComputerDesktopIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
+import { organizePhotosToFolders, isFileSystemAccessSupported, validateFolderName, ProcessingProgress } from '../utils/fileSystemUtils';
 import { Folder } from '../types';
 
 // --- Utility Functions ---
@@ -59,6 +61,14 @@ const FolderOrganizer: React.FC = () => {
 
     const [isDragging, setIsDragging] = useState(false);
     const [dateLogic, setDateLogic] = useState<DateLogic>('earliest');
+    
+    // File System Access states
+    const [isOrganizing, setIsOrganizing] = useState(false);
+    const [organizingProgress, setOrganizingProgress] = useState<ProcessingProgress>({
+        current: 0,
+        total: 0,
+        status: 'preparing'
+    });
 
     useEffect(() => {
         return () => {
@@ -169,6 +179,58 @@ const FolderOrganizer: React.FC = () => {
         if (!date) return t('unknownDate');
         return date.toISOString().split('T')[0];
     };
+
+    // File System Access functionality
+    const handleOrganizeToComputer = useCallback(async () => {
+        if (!isFileSystemAccessSupported()) {
+            alert(t('fileSystemNotSupported'));
+            return;
+        }
+
+        // Check if all folders have valid names
+        const validationErrors: string[] = [];
+        const foldersToOrganize = folders.filter(f => f.isRenamed).map(folder => {
+            const finalName = `${formatDateForScript(folder.representativeDate)}_${folder.newName}`;
+            if (!validateFolderName(finalName)) {
+                validationErrors.push(`Invalid folder name: ${finalName}`);
+            }
+            return {
+                name: finalName,
+                photos: folder.photos.map(p => p.file).filter((f): f is File => !!f)
+            };
+        });
+
+        if (validationErrors.length > 0) {
+            alert(`Please fix these folder names:\n${validationErrors.join('\n')}`);
+            return;
+        }
+
+        if (foldersToOrganize.length === 0) {
+            alert('No folders are ready to organize. Please rename at least one folder.');
+            return;
+        }
+
+        setIsOrganizing(true);
+        setOrganizingProgress({ current: 0, total: 0, status: 'preparing' });
+
+        try {
+            await organizePhotosToFolders(foldersToOrganize, (progress) => {
+                setOrganizingProgress(progress);
+            });
+        } catch (error) {
+            console.error('Organization failed:', error);
+            setOrganizingProgress(prev => ({
+                ...prev,
+                status: 'error',
+                error: error instanceof Error ? error.message : 'Unknown error occurred'
+            }));
+        }
+    }, [folders, t]);
+
+    const handleCloseProgressModal = useCallback(() => {
+        setIsOrganizing(false);
+        setOrganizingProgress({ current: 0, total: 0, status: 'preparing' });
+    }, []);
 
     const handleGenerateScript = () => {
         const { blob, filename } = createRenameScriptBlob(folders, formatDateForScript);
@@ -303,6 +365,19 @@ const FolderOrganizer: React.FC = () => {
                                 </span>
                             )}
                         </button>
+                        
+                        {/* Organize to Computer Button */}
+                        {isFileSystemAccessSupported() && (
+                            <button
+                                onClick={handleOrganizeToComputer}
+                                disabled={folders.filter(f => f.isRenamed).length === 0}
+                                className="flex items-center bg-green-600 text-white font-semibold py-2 px-4 rounded-lg border border-green-500 hover:bg-green-700 disabled:bg-slate-600 disabled:text-slate-400 disabled:border-slate-500 disabled:cursor-not-allowed transition-colors duration-200 shadow-sm"
+                            >
+                                <ComputerDesktopIcon className="h-5 w-5 mr-2" />
+                                {t('organizeToComputer')}
+                            </button>
+                        )}
+
                         <button
                             onClick={reset}
                             className="flex items-center bg-slate-700 text-slate-200 font-semibold py-2 px-4 rounded-lg border border-slate-600 hover:bg-slate-600 transition-colors duration-200 shadow-sm"
@@ -342,6 +417,13 @@ const FolderOrganizer: React.FC = () => {
                     </div>
                 </div>
             </div>
+            
+            {/* Progress Modal for File System Operations */}
+            <ProgressModal
+                isOpen={isOrganizing}
+                progress={organizingProgress}
+                onClose={handleCloseProgressModal}
+            />
         );
     }
 
