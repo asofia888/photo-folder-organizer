@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { Folder } from '../types';
+import { Folder, Photo } from '../types';
 import Thumbnail from './Thumbnail';
+import ImageModal from './ImageModal';
 import { FolderIcon, CheckCircleIcon, ClipboardIcon, SparklesIcon, PencilSquareIcon, ExclamationTriangleIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -17,6 +18,8 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
     const [copied, setCopied] = useState(false);
     const [isSuggesting, setIsSuggesting] = useState(false);
     const [suggestionError, setSuggestionError] = useState<string | null>(null);
+    const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const MAX_THUMBNAILS = 4;
 
     const formatDate = (date: Date | null): string => {
@@ -52,6 +55,30 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
         });
     };
 
+    const handleThumbnailClick = (photo: Photo) => {
+        setSelectedPhoto(photo);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedPhoto(null);
+    };
+
+    const handlePreviousPhoto = () => {
+        if (!selectedPhoto) return;
+        const currentIndex = folder.photos.findIndex(p => p.id === selectedPhoto.id);
+        const previousIndex = currentIndex > 0 ? currentIndex - 1 : folder.photos.length - 1;
+        setSelectedPhoto(folder.photos[previousIndex]);
+    };
+
+    const handleNextPhoto = () => {
+        if (!selectedPhoto) return;
+        const currentIndex = folder.photos.findIndex(p => p.id === selectedPhoto.id);
+        const nextIndex = currentIndex < folder.photos.length - 1 ? currentIndex + 1 : 0;
+        setSelectedPhoto(folder.photos[nextIndex]);
+    };
+
     return (
         <div className="bg-slate-800 rounded-xl shadow-lg border border-slate-700 overflow-hidden transition-all duration-300 flex flex-col hover:border-sky-500/50 hover:shadow-sky-500/10 animate-scale-in">
             <div className="p-5 flex-grow">
@@ -84,7 +111,11 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
                             <p className="text-sm text-slate-400 mb-2">{t('photoPreview')}</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                 {folder.photos.slice(0, MAX_THUMBNAILS).map(photo => (
-                                    <Thumbnail key={photo.id} photo={photo} />
+                                    <Thumbnail 
+                                        key={photo.id} 
+                                        photo={photo} 
+                                        onClick={() => handleThumbnailClick(photo)}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -136,6 +167,16 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
                     </button>
                 </div>
             )}
+            
+            {/* Image Modal */}
+            <ImageModal
+                photo={selectedPhoto}
+                photos={folder.photos}
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                onPrevious={handlePreviousPhoto}
+                onNext={handleNextPhoto}
+            />
         </div>
     );
 };
