@@ -377,6 +377,21 @@ const FolderOrganizer: React.FC = () => {
                                 {t('organizeToComputer')}
                             </button>
                         )}
+                        
+                        {/* Fallback message for browsers without File System Access API */}
+                        {!isFileSystemAccessSupported() && folders.filter(f => f.isRenamed).length > 0 && (
+                            <div className="flex items-center bg-blue-500/10 border border-blue-400/30 rounded-lg px-4 py-3 text-sm">
+                                <div className="text-blue-300">
+                                    <strong>{t('browserCompatibilityTitle')}</strong> {t('fileSystemNotSupported')}
+                                    <br />
+                                    <span className="text-blue-200 text-xs">
+                                        {locale === 'ja' 
+                                            ? 'Chrome・Edgeなら「コンピューターに整理」ボタンで直接整理できます。' 
+                                            : 'Use Chrome or Edge for direct "Organize to Computer" functionality.'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
 
                         <button
                             onClick={reset}

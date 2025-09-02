@@ -18,7 +18,7 @@ export const translations = {
     privacyTitle: 'Privacy First:',
     privacyDescription: 'Your photos are processed locally in your browser and are never uploaded.',
     browserCompatibilityTitle: 'Browser Compatibility:',
-    browserCompatibilityNotice: 'For the best experience, please use a modern desktop browser like Chrome or Edge. This app uses features that may not be supported on other browsers (like Firefox) or mobile devices.',
+    browserCompatibilityNotice: 'This app works on all modern browsers including Firefox and Safari. For direct folder organization (without scripts), Chrome or Edge is recommended. Mobile devices have limited support.',
     resultsTitle: 'Folders Sorted & Ready for Renaming',
     resultsDescription: 'Review thumbnails, name each folder, and use the copy button or download the script below to rename them on your computer.',
     organizeAnother: 'Organize Another Folder',
@@ -65,7 +65,7 @@ export const translations = {
     error: 'Error',
     cancel: 'Cancel',
     processing: 'Processing',
-    fileSystemNotSupported: 'File System Access is not supported in this browser',
+    fileSystemNotSupported: 'Direct folder organization requires Chrome or Edge browser.',
     selectTargetFolder: 'Select target folder to organize photos',
   },
   ja: {
@@ -85,7 +85,7 @@ export const translations = {
     privacyTitle: 'プライバシー第一:',
     privacyDescription: 'あなたの写真はブラウザ内でローカルに処理され、アップロードされることはありません。',
     browserCompatibilityTitle: 'ブラウザの互換性:',
-    browserCompatibilityNotice: '快適にご利用いただくため、ChromeやEdgeなどのモダンなデスクトップブラウザの使用を推奨します。このアプリは一部のブラウザ（Firefoxなど）やモバイル端末ではサポートされていない機能を使用しています。',
+    browserCompatibilityNotice: 'Firefox、Safariを含むすべてのモダンブラウザで動作します。直接フォルダ整理機能（スクリプト不要）はChrome・Edgeで利用可能です。モバイル端末は限定的なサポートです。',
     resultsTitle: 'フォルダがソートされ、名前の変更準備ができました',
     resultsDescription: 'サムネイルを確認し、各フォルダに名前を付け、コピーボタンを使うか、以下のスクリプトをダウンロードしてコンピュータ上で名前を変更できます。',
     organizeAnother: '別のフォルダを整理',
@@ -132,7 +132,7 @@ export const translations = {
     error: 'エラー',
     cancel: 'キャンセル',
     processing: '処理中',
-    fileSystemNotSupported: 'このブラウザではファイルシステムアクセスがサポートされていません',
+    fileSystemNotSupported: '直接フォルダ整理機能にはChrome・Edgeブラウザが必要です。',
     selectTargetFolder: '写真を整理する対象フォルダを選択してください',
   }
 };
