@@ -35,11 +35,41 @@
 
 ## Vercel デプロイ
 
-1. GitHub リポジトリを作成してコードをプッシュ
-2. [Vercel](https://vercel.com) アカウントでGitHub リポジトリを接続
-3. 環境変数 `GEMINI_API_KEY` を Vercel の設定で追加
-4. デプロイ完了
+### 前提条件
+- GitHub アカウント
+- [Vercel](https://vercel.com) アカウント
+- [Google AI Studio](https://aistudio.google.com/app/apikey) からの Gemini API キー
+
+### デプロイ手順
+
+1. **GitHubリポジトリの準備**
+   ```bash
+   git clone https://github.com/asofia888/photo-folder-organizer.git
+   cd photo-folder-organizer
+   ```
+
+2. **Vercelでのインポート**
+   - [Vercel Dashboard](https://vercel.com/dashboard) にアクセス
+   - "Add New..." → "Project" を選択
+   - GitHub リポジトリ `asofia888/photo-folder-organizer` をインポート
+
+3. **環境変数の設定**
+   - Vercel プロジェクト設定の "Environment Variables" で追加：
+     ```
+     GEMINI_API_KEY = your_actual_gemini_api_key_here
+     ```
+
+4. **デプロイ完了**
+   - 自動でビルド・デプロイが開始されます
+   - 数分で `https://your-project-name.vercel.app` でアクセス可能になります
 
 ## API エンドポイント
 
 - `POST /api/generateFolderName` - 画像からフォルダ名を生成
+  - Body: `{ images: [{ data: string, mimeType: string }], locale: 'ja'|'en' }`
+  - Response: `{ suggestion: string }`
+
+## トラブルシューティング
+
+- **API が 503 エラーを返す**: Vercel の環境変数で `GEMINI_API_KEY` が正しく設定されているか確認
+- **ビルドエラー**: Node.js 18+ が使用されていることを確認
