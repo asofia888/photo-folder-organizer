@@ -416,14 +416,14 @@ const FolderOrganizer: React.FC = () => {
                         </button>
                     </div>
                 </div>
+                
+                {/* Progress Modal for File System Operations */}
+                <ProgressModal
+                    isOpen={isOrganizing}
+                    progress={organizingProgress}
+                    onClose={handleCloseProgressModal}
+                />
             </div>
-            
-            {/* Progress Modal for File System Operations */}
-            <ProgressModal
-                isOpen={isOrganizing}
-                progress={organizingProgress}
-                onClose={handleCloseProgressModal}
-            />
         );
     }
 
