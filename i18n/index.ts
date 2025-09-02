@@ -1,0 +1,124 @@
+
+
+export const translations = {
+  en: {
+    appTitle: 'Photo Folder Organizer',
+    catchphraseMain: 'Let AI handle your tedious photo organization.',
+    catchphraseSub: 'Just drag and drop. AI automatically analyzes the date, location, and content of your photos to organize and name scattered folders by event. Making your memories easier to find.',
+    // FolderOrganizer
+    scanningFolder: 'Scanning folder: {folderName}...',
+    processingSubFolder: 'Processing sub-folder {index}/{total}: {subDirName}',
+    errorNoSubFolders: 'No sub-folders found in the dropped folder. Please drop a folder that contains other folders of images.',
+    errorNoImages: 'No images found in any of the sub-folders.',
+    errorUnknown: 'An unknown error occurred during processing.',
+    errorOccurred: 'An Error Occurred',
+    errorDropFile: 'Please drop a single folder, not files.',
+    dropZoneTitle: 'Drag & Drop Your Folder Here',
+    dropZoneDescription: 'Drop the main folder containing all the photo folders you want to organize.',
+    privacyTitle: 'Privacy First:',
+    privacyDescription: 'Your photos are processed locally in your browser and are never uploaded.',
+    browserCompatibilityTitle: 'Browser Compatibility:',
+    browserCompatibilityNotice: 'For the best experience, please use a modern desktop browser like Chrome or Edge. This app uses features that may not be supported on other browsers (like Firefox) or mobile devices.',
+    resultsTitle: 'Folders Sorted & Ready for Renaming',
+    resultsDescription: 'Review thumbnails, name each folder, and use the copy button or download the script below to rename them on your computer.',
+    organizeAnother: 'Organize Another Folder',
+    allFoldersRenamedTitle: 'All Done!',
+    allFoldersRenamedDescription: 'You\'ve renamed all folders. You can now download the script to apply the changes instantly.',
+    renameScriptInstructionsTitle: 'Finish Renaming in One Click',
+    renameScriptInstructions: "1. Download the script. 2. Place it inside the main folder you dropped ('{folderName}'). 3. Run it (double-click on Windows, or run `sh rename_folders.sh` in the terminal on Mac/Linux) to rename all folders at once.",
+    generateRenameScript: 'Download Rename Script',
+    dateRuleTitle: 'Folder Date Priority',
+    dateRuleOldest: 'Oldest Date',
+    dateRuleNewest: 'Newest Date',
+    saveAllChanges: 'Save All Changes',
+    // FolderCard
+    unknownDate: 'Unknown_Date',
+    original: 'Original:',
+    photoPreview: 'Photo Preview:',
+    newFolderNameLabel: 'New Folder Name:',
+    newFolderNamePlaceholder: 'e.g., Summer_Vacation',
+    saveNameAriaLabel: 'Save name',
+    editNameAriaLabel: 'Edit name',
+    readyToRename: 'Ready to rename!',
+    copied: 'Copied!',
+    copyName: 'Copy Name',
+    aiSuggestion: 'AI Suggestion',
+    aiSuggesting: 'Thinking...',
+    aiSuggestionError: 'Suggestion failed. Please try again.',
+    errorIconAriaLabel: 'Error',
+    // Modal and Footer
+    viewPrivacyAndDisclaimer: 'Privacy Policy & Disclaimer',
+    privacyPolicyTitle: 'Privacy Policy',
+    privacyPolicyContent: 'This application operates entirely on your local machine. No photos, file names, or other data are ever transmitted or uploaded to any server. All processing is done securely within your browser.',
+    disclaimerTitle: 'Disclaimer',
+    disclaimerContent: "This application is provided 'as is'. The developer is not responsible for any loss or alteration of data that may occur from its use. Please ensure you have backups of your important files before proceeding.",
+    close: 'Close',
+    userManual: 'User Manual',
+  },
+  ja: {
+    appTitle: '写真フォルダ整理アプリ',
+    catchphraseMain: '面倒な写真整理は、AIにおまかせ。',
+    catchphraseSub: 'ドラッグ＆ドロップするだけ。AIが写真の日付、場所、内容を自動で分析し、散らかったフォルダをイベントごとに整理・命名します。あなたの思い出が、もっと見つかりやすくなる。',
+    // FolderOrganizer
+    scanningFolder: 'フォルダをスキャン中: {folderName}...',
+    processingSubFolder: 'サブフォルダを処理中 {index}/{total}: {subDirName}',
+    errorNoSubFolders: 'ドロップされたフォルダにサブフォルダが見つかりませんでした。画像の入ったフォルダを含む親フォルダをドロップしてください。',
+    errorNoImages: 'どのサブフォルダにも画像が見つかりませんでした。',
+    errorUnknown: '処理中に不明なエラーが発生しました。',
+    errorOccurred: 'エラーが発生しました',
+    errorDropFile: 'ファイルではなく、単一のフォルダをドロップしてください。',
+    dropZoneTitle: 'ここにフォルダをドラッグ＆ドロップ',
+    dropZoneDescription: '整理したいすべての写真フォルダが入っている親フォルダをドロップしてください。',
+    privacyTitle: 'プライバシー第一:',
+    privacyDescription: 'あなたの写真はブラウザ内でローカルに処理され、アップロードされることはありません。',
+    browserCompatibilityTitle: 'ブラウザの互換性:',
+    browserCompatibilityNotice: '快適にご利用いただくため、ChromeやEdgeなどのモダンなデスクトップブラウザの使用を推奨します。このアプリは一部のブラウザ（Firefoxなど）やモバイル端末ではサポートされていない機能を使用しています。',
+    resultsTitle: 'フォルダがソートされ、名前の変更準備ができました',
+    resultsDescription: 'サムネイルを確認し、各フォルダに名前を付け、コピーボタンを使うか、以下のスクリプトをダウンロードしてコンピュータ上で名前を変更できます。',
+    organizeAnother: '別のフォルダを整理',
+    allFoldersRenamedTitle: 'すべて完了！',
+    allFoldersRenamedDescription: 'すべてのフォルダの名前を変更しました。スクリプトをダウンロードして、変更を即座に適用できます。',
+    renameScriptInstructionsTitle: 'ワンクリックで名前変更を完了',
+    renameScriptInstructions: "1. スクリプトをダウンロードします。 2. ドロップしたメインフォルダ（'{folderName}'）内に配置します。 3. 実行すると（Windowsではダブルクリック、Mac/Linuxではターミナルで `sh rename_folders.sh` を実行）、すべてのフォルダが一括で名前変更されます。",
+    generateRenameScript: 'リネームスクリプトを生成',
+    dateRuleTitle: 'フォルダ内の日付優先',
+    dateRuleOldest: '最も古い日付',
+    dateRuleNewest: '最も新しい日付',
+    saveAllChanges: 'すべての変更を保存',
+    // FolderCard
+    unknownDate: '日付不明',
+    original: '元の名前:',
+    photoPreview: '写真プレビュー:',
+    newFolderNameLabel: '新しいフォルダ名:',
+    newFolderNamePlaceholder: '例: 夏休み',
+    saveNameAriaLabel: '名前を保存',
+    editNameAriaLabel: '名前を編集',
+    readyToRename: '名前変更の準備完了！',
+    copied: 'コピーしました！',
+    copyName: '名前をコピー',
+    aiSuggestion: 'AIで命名',
+    aiSuggesting: '考え中...',
+    aiSuggestionError: '提案に失敗しました。再試行してください。',
+    errorIconAriaLabel: 'エラー',
+    // Modal and Footer
+    viewPrivacyAndDisclaimer: 'プライバシーポリシーと免責事項',
+    privacyPolicyTitle: 'プライバシーポリシー',
+    privacyPolicyContent: 'このアプリケーションは、お使いのコンピュータ上で完全に動作します。写真、ファイル名、その他のデータがサーバーに送信またはアップロードされることは一切ありません。すべての処理は、お使いのブラウザ内で安全に行われます。',
+    disclaimerTitle: '免責事項',
+    disclaimerContent: 'このアプリケーションは「現状有姿」で提供されます。本アプリケーションの使用によって生じたいかなるデータの損失や変更についても、開発者は責任を負いません。続行する前に、重要なファイルのバックアップがあることを確認してください。',
+    close: '閉じる',
+    userManual: '使い方マニュアル',
+  }
+};
+
+export type Locale = keyof typeof translations;
+
+export const getInitialLocale = (): Locale => {
+  if (typeof window !== 'undefined' && window.navigator) {
+    const browserLang = window.navigator.language;
+    if (browserLang.toLowerCase().startsWith('ja')) {
+      return 'ja';
+    }
+  }
+  return 'en';
+};

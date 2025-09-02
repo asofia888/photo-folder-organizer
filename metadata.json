@@ -1,0 +1,6 @@
+{
+  "name": "Photo Folder Organizer",
+  "description": "An application to help organize folders of photos by sorting them based on the earliest EXIF date within each folder. Users can then preview thumbnails and assign new names.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
