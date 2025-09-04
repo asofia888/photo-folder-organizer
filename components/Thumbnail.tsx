@@ -1,14 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Photo } from '../types';
+import { ThumbnailProps } from '../types/componentTypes';
 import { useLazyThumbnails } from '../hooks/useLazyThumbnails';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
-
-interface ThumbnailProps {
-  photo: Photo;
-  onClick?: () => void;
-  lazy?: boolean;
-  onLoad?: () => void;
-}
 
 const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLoad }) => {
   const { getThumbnailUrl } = useLazyThumbnails();

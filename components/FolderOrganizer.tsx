@@ -4,10 +4,11 @@ import FolderCard from './FolderCard';
 import Spinner from './Spinner';
 import ProgressModal from './ProgressModal';
 import { VirtualScrollGrid } from './VirtualScrollGrid';
+import PerformanceMonitor from './PerformanceMonitor';
 import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon, ComputerDesktopIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
-import { organizePhotosToFolders, isFileSystemAccessSupported, validateFolderName, ProcessingProgress } from '../utils/fileSystemUtils';
+import { organizePhotosToFolders, isFileSystemAccessSupported, isValidFolderNameBoolean, ProcessingProgress } from '../utils/fileSystemUtils';
 import { Folder } from '../types';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 
@@ -152,7 +153,7 @@ const FolderOrganizer: React.FC = () => {
         const validationErrors: string[] = [];
         const foldersToOrganize = folders.filter(f => f.isRenamed).map(folder => {
             const finalName = `${formatDateForScript(folder.representativeDate)}_${folder.newName}`;
-            if (!validateFolderName(finalName)) {
+            if (!isValidFolderNameBoolean(finalName)) {
                 validationErrors.push(`Invalid folder name: ${finalName}`);
             }
             return {
@@ -175,9 +176,26 @@ const FolderOrganizer: React.FC = () => {
         setOrganizingProgress({ current: 0, total: 0, status: 'preparing' });
 
         try {
-            await organizePhotosToFolders(foldersToOrganize, (progress) => {
+            const result = await organizePhotosToFolders(foldersToOrganize, (progress) => {
                 setOrganizingProgress(progress);
             });
+            
+            if (!result.success) {
+                const appError = handleError(
+                    result.error,
+                    ErrorType.FILE_ACCESS_DENIED,
+                    ErrorSeverity.HIGH,
+                    {
+                        operation: 'organizePhotosToFolders',
+                        folderCount: foldersToOrganize.length
+                    }
+                );
+                setOrganizingProgress(prev => ({
+                    ...prev,
+                    status: 'error',
+                    error: appError.userMessage
+                }));
+            }
         } catch (error) {
             const appError = handleError(
                 error instanceof Error ? error : new Error(String(error)),
@@ -220,6 +238,7 @@ const FolderOrganizer: React.FC = () => {
                 <div className="mb-10 max-w-3xl lg:max-w-5xl mx-auto">
                     <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gradient tracking-tight lg:whitespace-nowrap">{t('catchphraseMain')}</h2>
                     <p className="mt-4 text-lg text-slate-300">{t('catchphraseSub')}</p>
+                    <p className="mt-2 text-sm text-green-400 font-medium">あなたの写真はブラウザ内でローカルに処理され、アップロードされることはありません</p>
                 </div>
 
                 <div className="p-8 sm:p-10 bg-slate-800/50 rounded-2xl border border-slate-700/80">

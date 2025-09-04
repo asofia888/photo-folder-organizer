@@ -1,23 +1,26 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Folder, Photo } from '../types';
+import { FolderCardProps } from '../types/componentTypes';
 import Thumbnail from './Thumbnail';
 import ImageModal from './ImageModal';
 import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon, ExclamationTriangleIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
+import { isNonEmptyString, createNonEmptyString } from '../utils/typeGuards';
 
-interface FolderCardProps {
-    folder: Folder;
-    onNameChange: (folderId: string, newName: string) => void;
-    onEdit: (folderId: string) => void;
-}
-
-const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onEdit }) => {
+const FolderCard: React.FC<FolderCardProps> = ({ 
+  folder, 
+  onNameChange, 
+  onEdit,
+  maxThumbnails = 4,
+  showMetadata = false,
+  isCompact = false,
+  className
+}) => {
     const { t } = useLanguage();
     const [copied, setCopied] = useState(false);
     const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const MAX_THUMBNAILS = 4;
 
     const formatDate = (date: Date | null): string => {
         if (!date) return t('unknownDate');
@@ -90,7 +93,7 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onEdit })
                         <div className="mb-4">
                             <p className="text-sm text-slate-400 mb-2">{t('photoPreview')}</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                {folder.photos.slice(0, MAX_THUMBNAILS).map(photo => (
+                                {folder.photos.slice(0, maxThumbnails).map(photo => (
                                     <Thumbnail 
                                         key={photo.id} 
                                         photo={photo} 
