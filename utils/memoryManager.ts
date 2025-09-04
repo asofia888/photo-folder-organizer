@@ -2,6 +2,8 @@
  * Memory management utilities for handling large numbers of images
  */
 
+import { ErrorType, ErrorSeverity, handleError } from './errorHandler';
+
 export class MemoryManager {
   private static instance: MemoryManager;
   private objectUrls: Set<string> = new Set();
@@ -59,7 +61,12 @@ export class MemoryManager {
       const ctx = canvas.getContext('2d');
 
       if (!ctx) {
-        reject(new Error('Could not get canvas context'));
+        const error = new Error('Could not get canvas context');
+        handleError(error, ErrorType.BROWSER_NOT_SUPPORTED, ErrorSeverity.MEDIUM, {
+          operation: 'createThumbnail',
+          fileName: file.name
+        });
+        reject(error);
         return;
       }
 
@@ -83,11 +90,17 @@ export class MemoryManager {
         resolve(canvas);
       };
 
-      img.onerror = () => {
+      img.onerror = (event) => {
+        const error = new Error('Failed to load image');
+        handleError(error, ErrorType.FILE_NOT_FOUND, ErrorSeverity.LOW, {
+          fileName: file.name,
+          fileSize: file.size,
+          operation: 'loadImageForThumbnail'
+        });
         img.src = '';
         img.onload = null;
         img.onerror = null;
-        reject(new Error('Failed to load image'));
+        reject(error);
       };
 
       img.src = URL.createObjectURL(file);

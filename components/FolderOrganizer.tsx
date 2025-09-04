@@ -9,6 +9,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
 import { organizePhotosToFolders, isFileSystemAccessSupported, validateFolderName, ProcessingProgress } from '../utils/fileSystemUtils';
 import { Folder } from '../types';
+import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 
 // --- Utility Functions ---
 
@@ -178,11 +179,19 @@ const FolderOrganizer: React.FC = () => {
                 setOrganizingProgress(progress);
             });
         } catch (error) {
-            console.error('Organization failed:', error);
+            const appError = handleError(
+                error instanceof Error ? error : new Error(String(error)),
+                ErrorType.FILE_ACCESS_DENIED,
+                ErrorSeverity.HIGH,
+                {
+                    operation: 'organizePhotosToFolders',
+                    folderCount: foldersToOrganize.length
+                }
+            );
             setOrganizingProgress(prev => ({
                 ...prev,
                 status: 'error',
-                error: error instanceof Error ? error.message : 'Unknown error occurred'
+                error: appError.userMessage
             }));
         }
     }, [folders, t]);

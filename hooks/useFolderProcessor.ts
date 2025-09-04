@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Folder, Photo } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import MemoryManager from '../utils/memoryManager';
+import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 
 type ProcessorStatus = 'idle' | 'processing' | 'done' | 'error';
 export type DateLogic = 'earliest' | 'latest';
@@ -254,7 +255,10 @@ export const useFolderProcessor = () => {
                     setProgress(null);
                     break;
                 case 'error':
-                    setError(error || t('errorUnknown'));
+                    const appError = handleError(error || 'Worker error', ErrorType.WORKER_ERROR, ErrorSeverity.HIGH, {
+                        workerError: true
+                    });
+                    setError(appError.userMessage);
                     setStatus('error');
                     setProgress(null);
                     break;
@@ -296,7 +300,12 @@ export const useFolderProcessor = () => {
             const subDirectories = entries.filter(entry => entry.isDirectory) as FileSystemDirectoryEntry[];
 
             if (subDirectories.length === 0) {
-                throw new Error(t('errorNoSubFolders'));
+                const error = new Error(t('errorNoSubFolders'));
+                handleError(error, ErrorType.DIRECTORY_NOT_FOUND, ErrorSeverity.MEDIUM, {
+                    directoryName: directoryEntry.name,
+                    entriesFound: entries.length
+                });
+                throw error;
             }
             
             setProcessingMessage('Gathering files to process...');
@@ -322,14 +331,22 @@ export const useFolderProcessor = () => {
 
 
             if (folderFileGroups.length === 0) {
-                throw new Error(t('errorNoImages'));
+                const error = new Error(t('errorNoImages'));
+                handleError(error, ErrorType.INVALID_FILE_FORMAT, ErrorSeverity.MEDIUM, {
+                    subDirectories: subDirectories.length,
+                    validGroups: folderFileGroups.length
+                });
+                throw error;
             }
 
             workerRef.current?.postMessage({ folderFileGroups, dateLogic });
 
         } catch (e: any) {
-            console.error("Processing error:", e);
-            setError(e.message || t('errorUnknown'));
+            const appError = handleError(e, ErrorType.PROCESSING_FAILED, ErrorSeverity.HIGH, {
+                folderCount: folderFileGroups?.length || 0,
+                operation: 'processDirectory'
+            });
+            setError(appError.userMessage);
             setStatus('error');
         }
     }, [t, cleanup]);

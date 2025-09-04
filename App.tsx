@@ -6,6 +6,7 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import PrivacyModal from './components/PrivacyModal';
 import ManualModal from './components/ManualModal';
+import { ErrorNotificationContainer } from './components/ErrorNotification';
 
 const AppContent: React.FC = () => {
     const { t } = useLanguage();
@@ -56,6 +57,7 @@ const AppContent: React.FC = () => {
             </footer>
             <PrivacyModal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} />
             <ManualModal isOpen={isManualModalOpen} onClose={() => setIsManualModalOpen(false)} />
+            <ErrorNotificationContainer />
         </div>
     );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Photo } from '../types';
 import { useLazyThumbnails } from '../hooks/useLazyThumbnails';
+import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 
 interface ThumbnailProps {
   photo: Photo;
@@ -47,7 +48,18 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
     onLoad?.();
   };
 
-  const handleImageError = () => {
+  const handleImageError = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = event.currentTarget;
+    handleError(
+      `Failed to load image: ${img.src}`,
+      ErrorType.FILE_NOT_FOUND,
+      ErrorSeverity.LOW,
+      {
+        imageSrc: img.src,
+        fileName: photo.file?.name || 'unknown',
+        fileSize: photo.file?.size || 0
+      }
+    );
     setIsLoading(false);
     setHasError(true);
   };
