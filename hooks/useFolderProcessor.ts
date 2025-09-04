@@ -2,6 +2,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Folder, Photo } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
+import MemoryManager from '../utils/memoryManager';
 
 type ProcessorStatus = 'idle' | 'processing' | 'done' | 'error';
 export type DateLogic = 'earliest' | 'latest';
@@ -10,48 +11,111 @@ const workerScript = `
 // In-memory worker for processing photo data without blocking the main thread.
 import exifr from 'https://esm.sh/exifr@^7.1.3';
 
+const FILE_SIZE_LIMITS = {
+    SKIP: 100 * 1024 * 1024,     // 100MB - Skip completely
+    WARNING: 50 * 1024 * 1024,   // 50MB - Process but warn
+    OPTIMAL: 20 * 1024 * 1024    // 20MB - Optimal processing
+};
+
+const BATCH_SIZE = 8; // Process files in batches to reduce memory pressure
+
 self.onmessage = async (e) => {
     try {
         const { folderFileGroups, dateLogic } = e.data;
         const allProcessedFolders = [];
         const totalFolders = folderFileGroups.length;
+        let totalFiles = folderFileGroups.reduce((sum, group) => sum + group.files.length, 0);
+        let processedFiles = 0;
 
-        self.postMessage({ type: 'start', payload: { total: totalFolders } });
+        self.postMessage({ 
+            type: 'start', 
+            payload: { 
+                totalFolders, 
+                totalFiles,
+                phase: 'processing'
+            } 
+        });
 
         for (let i = 0; i < folderFileGroups.length; i++) {
             const group = folderFileGroups[i];
             
+            if (group.files.length === 0) continue;
+
+            // Filter files by size before processing
+            const validFiles = group.files.filter(file => {
+                if (file.size > FILE_SIZE_LIMITS.SKIP) {
+                    console.warn('Skipping large file:', file.name, 'Size:', Math.round(file.size / 1024 / 1024) + 'MB');
+                    return false;
+                }
+                return true;
+            });
+
+            if (validFiles.length === 0) {
+                processedFiles += group.files.length;
+                continue;
+            }
+
             self.postMessage({ 
                 type: 'progress', 
                 payload: { 
-                    processed: i + 1, 
-                    total: totalFolders, 
-                    currentFolderName: group.originalName 
+                    processedFolders: i + 1, 
+                    totalFolders, 
+                    processedFiles,
+                    totalFiles,
+                    currentFolderName: group.originalName,
+                    phase: 'processing',
+                    memoryUsage: self.performance?.memory?.usedJSHeapSize || 0
                 }
             });
+
+            // Process files in batches to reduce memory pressure
+            const photoResults = [];
             
-            if (group.files.length === 0) continue;
-
-            const photoProcessingPromises = group.files.map(async (file) => {
-                try {
-                    if (file.size > 20 * 1024 * 1024) return null; // Skip large files that might hang parser
-
-                    let date = null;
+            for (let batchStart = 0; batchStart < validFiles.length; batchStart += BATCH_SIZE) {
+                const batchEnd = Math.min(batchStart + BATCH_SIZE, validFiles.length);
+                const batch = validFiles.slice(batchStart, batchEnd);
+                
+                const batchPromises = batch.map(async (file) => {
                     try {
-                        const exifData = await exifr.parse(file, { pick: ['DateTimeOriginal', 'CreateDate'] });
-                        date = exifData?.DateTimeOriginal || exifData?.CreateDate || null;
-                    } catch (exifError) {
-                        // This is expected for non-image files or images without EXIF data
+                        let date = null;
+                        try {
+                            const exifData = await exifr.parse(file, { 
+                                pick: ['DateTimeOriginal', 'CreateDate'],
+                                translateKeys: false,
+                                reviveValues: false // Reduce memory usage
+                            });
+                            date = exifData?.DateTimeOriginal || exifData?.CreateDate || null;
+                        } catch (exifError) {
+                            // Expected for non-image files or files without EXIF
+                        }
+                        
+                        return { id: file.name + file.lastModified, date, file };
+                    } catch (fileError) {
+                        console.error('Error processing file in worker:', file.name, fileError);
+                        return null;
                     }
-                    
-                    return { id: file.name + file.lastModified, date, file };
-                } catch (fileError) {
-                    console.error('Error processing file in worker:', file.name, fileError);
-                    return null;
+                });
+                
+                const batchResults = (await Promise.all(batchPromises)).filter(p => p !== null);
+                photoResults.push(...batchResults);
+                processedFiles += batch.length;
+                
+                // Send progress update for file-level progress
+                self.postMessage({ 
+                    type: 'file-progress', 
+                    payload: { 
+                        processedFiles,
+                        totalFiles,
+                        currentFolder: group.originalName,
+                        batchProgress: batchEnd / validFiles.length
+                    }
+                });
+                
+                // Small delay to prevent blocking
+                if (batchStart % (BATCH_SIZE * 3) === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1));
                 }
-            });
-            
-            const photoResults = (await Promise.all(photoProcessingPromises)).filter(p => p !== null);
+            }
 
             if (photoResults.length === 0) continue;
             
@@ -105,16 +169,31 @@ export const useFolderProcessor = () => {
     const [error, setError] = useState<string | null>(null);
     const [processingMessage, setProcessingMessage] = useState('');
     const [rootFolderName, setRootFolderName] = useState('');
-    const [progress, setProgress] = useState<{ processed: number; total: number } | null>(null);
+    const [progress, setProgress] = useState<{ 
+        processedFolders: number; 
+        totalFolders: number;
+        processedFiles: number;
+        totalFiles: number;
+        phase: string;
+        memoryUsage?: number;
+    } | null>(null);
     const objectUrls = useRef<string[]>([]);
     const workerRef = useRef<Worker | null>(null);
+    const memoryManager = useRef(MemoryManager.getInstance());
     
     const cleanup = useCallback(() => {
         objectUrls.current.forEach(URL.revokeObjectURL);
         objectUrls.current = [];
+        // Also cleanup any memory references
+        if (typeof global !== 'undefined' && global.gc) {
+            global.gc();
+        }
     }, []);
 
     useEffect(() => {
+        // Start memory monitoring
+        memoryManager.current.startMonitoring(5000);
+        
         const blob = new Blob([workerScript], { type: 'application/javascript' });
         const workerUrl = URL.createObjectURL(blob);
         workerRef.current = new Worker(workerUrl, { type: 'module' });
@@ -124,11 +203,26 @@ export const useFolderProcessor = () => {
 
             switch(type) {
                 case 'start':
-                    setProgress({ processed: 0, total: payload.total });
+                    setProgress({ 
+                        processedFolders: 0, 
+                        totalFolders: payload.totalFolders,
+                        processedFiles: 0,
+                        totalFiles: payload.totalFiles,
+                        phase: payload.phase || 'processing'
+                    });
                     break;
                 case 'progress':
                     setProgress(payload);
-                    setProcessingMessage(t('processingSubFolder', { index: payload.processed, total: payload.total, subDirName: payload.currentFolderName }));
+                    const folderProgress = `${payload.processedFolders}/${payload.totalFolders}`;
+                    const fileProgress = `${payload.processedFiles}/${payload.totalFiles}`;
+                    setProcessingMessage(`Processing folder ${folderProgress} (${fileProgress} files) - ${payload.currentFolderName}`);
+                    break;
+                case 'file-progress':
+                    // Update file-level progress without changing folder message
+                    setProgress(prev => prev ? {
+                        ...prev,
+                        processedFiles: payload.processedFiles
+                    } : null);
                     break;
                 case 'done':
                     if (payload.length === 0) {
@@ -137,17 +231,19 @@ export const useFolderProcessor = () => {
                         return;
                     }
 
-                    // Create object URLs on the main thread
-                    const foldersWithUrls = payload.map((folder: any) => ({
+                    setProcessingMessage('Creating thumbnails...');
+                    setProgress(prev => prev ? { ...prev, phase: 'rendering' } : null);
+                    
+                    // Don't create object URLs immediately - do it lazily when needed
+                    const foldersWithoutUrls = payload.map((folder: any) => ({
                         ...folder,
-                        photos: folder.photos.map((photo: any) => {
-                            const objectUrl = URL.createObjectURL(photo.file);
-                            objectUrls.current.push(objectUrl);
-                            return { ...photo, url: objectUrl };
-                        })
+                        photos: folder.photos.map((photo: any) => ({
+                            ...photo,
+                            url: null // Will be created lazily
+                        }))
                     }));
 
-                    const sortedFolders = foldersWithUrls.sort((a: Folder, b: Folder) => {
+                    const sortedFolders = foldersWithoutUrls.sort((a: Folder, b: Folder) => {
                         if (!a.representativeDate) return 1;
                         if (!b.representativeDate) return -1;
                         return new Date(a.representativeDate).getTime() - new Date(b.representativeDate).getTime();
@@ -155,10 +251,12 @@ export const useFolderProcessor = () => {
 
                     setFolders(sortedFolders);
                     setStatus('done');
+                    setProgress(null);
                     break;
                 case 'error':
                     setError(error || t('errorUnknown'));
                     setStatus('error');
+                    setProgress(null);
                     break;
             }
         };
@@ -168,6 +266,7 @@ export const useFolderProcessor = () => {
         return () => {
             workerRef.current?.terminate();
             URL.revokeObjectURL(workerUrl);
+            memoryManager.current.stopMonitoring();
             cleanup();
         };
     }, [t, cleanup]);

@@ -3,6 +3,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import FolderCard from './FolderCard';
 import Spinner from './Spinner';
 import ProgressModal from './ProgressModal';
+import { VirtualScrollGrid } from './VirtualScrollGrid';
 import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon, ComputerDesktopIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
@@ -61,6 +62,7 @@ const FolderOrganizer: React.FC = () => {
 
     const [isDragging, setIsDragging] = useState(false);
     const [dateLogic, setDateLogic] = useState<DateLogic>('earliest');
+    const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(process.env.NODE_ENV === 'development');
     
     // File System Access states
     const [isOrganizing, setIsOrganizing] = useState(false);
@@ -361,16 +363,43 @@ const FolderOrganizer: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    {folders.map(folder => (
-                        <FolderCard
-                            key={folder.id}
-                            folder={folder}
-                            onNameChange={handleNameChange}
-                            onEdit={handleEditFolder}
+                {folders.length > 20 ? (
+                    // Use virtual scrolling for large lists
+                    <div className="mb-6">
+                        <div className="mb-4 text-sm text-slate-400">
+                            Showing {folders.length} folders (virtual scrolling enabled for better performance)
+                        </div>
+                        <VirtualScrollGrid
+                            items={folders}
+                            itemHeight={400} // Approximate height of FolderCard
+                            containerHeight={Math.min(1200, Math.max(800, folders.length * 50))} // Dynamic height with limits
+                            overscan={2}
+                            className="rounded-lg border border-slate-700/50 bg-slate-900/50"
+                            renderItem={(folder, index) => (
+                                <div className="p-4 border-b border-slate-700/30 last:border-b-0">
+                                    <FolderCard
+                                        key={folder.id}
+                                        folder={folder}
+                                        onNameChange={handleNameChange}
+                                        onEdit={handleEditFolder}
+                                    />
+                                </div>
+                            )}
                         />
-                    ))}
-                </div>
+                    </div>
+                ) : (
+                    // Use regular grid for smaller lists
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {folders.map(folder => (
+                            <FolderCard
+                                key={folder.id}
+                                folder={folder}
+                                onNameChange={handleNameChange}
+                                onEdit={handleEditFolder}
+                            />
+                        ))}
+                    </div>
+                )}
 
                  <div className="mt-12 p-6 bg-slate-800/50 rounded-2xl shadow-lg border border-slate-700/80">
                     <h3 className="text-xl font-bold text-slate-100">{t('renameScriptInstructionsTitle')}</h3>
@@ -394,6 +423,12 @@ const FolderOrganizer: React.FC = () => {
                     isOpen={isOrganizing}
                     progress={organizingProgress}
                     onClose={handleCloseProgressModal}
+                />
+                
+                {/* Performance Monitor */}
+                <PerformanceMonitor 
+                    isVisible={showPerformanceMonitor}
+                    onToggle={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
                 />
             </div>
         );

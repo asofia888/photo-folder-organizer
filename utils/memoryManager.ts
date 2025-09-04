@@ -6,8 +6,12 @@ export class MemoryManager {
   private static instance: MemoryManager;
   private objectUrls: Set<string> = new Set();
   private canvasCache: Map<string, HTMLCanvasElement> = new Map();
+  private cleanupCallbacks: Array<() => void> = [];
+  private memoryCheckInterval?: NodeJS.Timeout;
+  private isMonitoring = false;
   private readonly MAX_CACHE_SIZE = 50;
   private readonly THUMBNAIL_SIZE = 200;
+  private readonly MEMORY_THRESHOLD = 80; // Percentage
 
   private constructor() {}
 
@@ -191,6 +195,18 @@ export class MemoryManager {
     });
     this.objectUrls.clear();
     this.canvasCache.clear();
+    
+    // Run all cleanup callbacks
+    this.cleanupCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (error) {
+        console.error('Error in cleanup callback:', error);
+      }
+    });
+    
+    this.stopMonitoring();
+    console.log('MemoryManager: Full cleanup completed');
   }
 
   /**
@@ -200,17 +216,121 @@ export class MemoryManager {
     objectUrlCount: number;
     canvasCacheSize: number;
     estimatedMemoryUsage: string;
+    systemMemory?: {
+      usedJSHeapSize: number;
+      totalJSHeapSize: number;
+      jsHeapSizeLimit: number;
+      utilization: number;
+    };
   } {
     const estimatedMemory = (
       this.objectUrls.size * 0.5 + // ~0.5MB per thumbnail URL
       this.canvasCache.size * 0.2   // ~0.2MB per cached canvas
     ).toFixed(1);
 
+    let systemMemory;
+    if (typeof window !== 'undefined' && 'performance' in window && 'memory' in (window as any).performance) {
+      const memory = (window as any).performance.memory;
+      systemMemory = {
+        usedJSHeapSize: memory.usedJSHeapSize,
+        totalJSHeapSize: memory.totalJSHeapSize,
+        jsHeapSizeLimit: memory.jsHeapSizeLimit,
+        utilization: (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100
+      };
+    }
+
     return {
       objectUrlCount: this.objectUrls.size,
       canvasCacheSize: this.canvasCache.size,
-      estimatedMemoryUsage: `${estimatedMemory}MB`
+      estimatedMemoryUsage: `${estimatedMemory}MB`,
+      systemMemory
     };
+  }
+
+  /**
+   * Register cleanup callback
+   */
+  registerCleanupCallback(callback: () => void): () => void {
+    this.cleanupCallbacks.push(callback);
+    return () => {
+      const index = this.cleanupCallbacks.indexOf(callback);
+      if (index > -1) {
+        this.cleanupCallbacks.splice(index, 1);
+      }
+    };
+  }
+
+  /**
+   * Start memory monitoring
+   */
+  startMonitoring(intervalMs: number = 10000): void {
+    if (this.isMonitoring) return;
+
+    this.isMonitoring = true;
+    this.memoryCheckInterval = setInterval(() => {
+      const stats = this.getMemoryStats();
+      
+      if (stats.systemMemory) {
+        const utilization = stats.systemMemory.utilization;
+        console.log(`Memory: ${Math.round(stats.systemMemory.usedJSHeapSize / 1024 / 1024)}MB (${utilization.toFixed(1)}%), URLs: ${stats.objectUrlCount}, Cache: ${stats.canvasCacheSize}`);
+        
+        if (utilization > this.MEMORY_THRESHOLD) {
+          console.warn('High memory usage detected, performing cleanup...');
+          this.performEmergencyCleanup();
+        }
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Stop memory monitoring
+   */
+  stopMonitoring(): void {
+    if (this.memoryCheckInterval) {
+      clearInterval(this.memoryCheckInterval);
+      this.memoryCheckInterval = undefined;
+    }
+    this.isMonitoring = false;
+  }
+
+  /**
+   * Emergency cleanup for high memory situations
+   */
+  private performEmergencyCleanup(): void {
+    // Clear half of the canvas cache
+    const cacheEntries = Array.from(this.canvasCache.entries());
+    const toRemove = cacheEntries.slice(0, Math.floor(cacheEntries.length / 2));
+    toRemove.forEach(([key]) => this.canvasCache.delete(key));
+
+    // Clear older object URLs
+    const urls = Array.from(this.objectUrls);
+    if (urls.length > 20) {
+      const toRemove = urls.slice(0, urls.length - 20);
+      toRemove.forEach(url => {
+        URL.revokeObjectURL(url);
+        this.objectUrls.delete(url);
+      });
+    }
+
+    // Run cleanup callbacks
+    this.cleanupCallbacks.forEach(callback => {
+      try {
+        callback();
+      } catch (error) {
+        console.error('Error in cleanup callback:', error);
+      }
+    });
+
+    this.forceGarbageCollection();
+    console.log('Emergency cleanup completed');
+  }
+
+  /**
+   * Check if memory usage is high
+   */
+  isMemoryUsageHigh(): boolean {
+    const stats = this.getMemoryStats();
+    return stats.systemMemory ? stats.systemMemory.utilization > this.MEMORY_THRESHOLD : false;
   }
 }
 
