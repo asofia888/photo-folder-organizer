@@ -3,8 +3,8 @@
 export const translations = {
   en: {
     appTitle: 'Photo Folder Organizer',
-    catchphraseMain: 'Let AI handle your tedious photo organization.',
-    catchphraseSub: 'Just drag and drop. AI automatically analyzes the date, location, and content of your photos to organize and name scattered folders by event. Making your memories easier to find.',
+    catchphraseMain: 'Effortless photo organization made simple.',
+    catchphraseSub: 'Just drag and drop. Automatically organize scattered folders by date and event. Making your memories easier to find.',
     // FolderOrganizer
     scanningFolder: 'Scanning folder: {folderName}...',
     processingSubFolder: 'Processing sub-folder {index}/{total}: {subDirName}',
@@ -42,9 +42,6 @@ export const translations = {
     readyToRename: 'Ready to rename!',
     copied: 'Copied!',
     copyName: 'Copy Name',
-    aiSuggestion: 'AI Suggestion',
-    aiSuggesting: 'Thinking...',
-    aiSuggestionError: 'Suggestion failed. Please try again.',
     errorIconAriaLabel: 'Error',
     // Modal and Footer
     viewPrivacyAndDisclaimer: 'Privacy Policy & Disclaimer',
@@ -70,8 +67,8 @@ export const translations = {
   },
   ja: {
     appTitle: '写真フォルダ整理アプリ',
-    catchphraseMain: '面倒な写真整理は、AIにおまかせ。',
-    catchphraseSub: 'ドラッグ＆ドロップするだけ。AIが写真の日付、場所、内容を自動で分析し、散らかったフォルダをイベントごとに整理・命名します。あなたの思い出が、もっと見つかりやすくなる。',
+    catchphraseMain: '面倒な写真整理を、シンプルに。',
+    catchphraseSub: 'ドラッグ＆ドロップするだけ。散らかったフォルダを日付・イベントごとに自動整理。あなたの思い出が、もっと見つかりやすくなる。',
     // FolderOrganizer
     scanningFolder: 'フォルダをスキャン中: {folderName}...',
     processingSubFolder: 'サブフォルダを処理中 {index}/{total}: {subDirName}',
@@ -109,9 +106,6 @@ export const translations = {
     readyToRename: '名前変更の準備完了！',
     copied: 'コピーしました！',
     copyName: '名前をコピー',
-    aiSuggestion: 'AIで命名',
-    aiSuggesting: '考え中...',
-    aiSuggestionError: '提案に失敗しました。再試行してください。',
     errorIconAriaLabel: 'エラー',
     // Modal and Footer
     viewPrivacyAndDisclaimer: 'プライバシーポリシーと免責事項',

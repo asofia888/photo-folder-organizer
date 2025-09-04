@@ -3,21 +3,18 @@ import React, { useState } from 'react';
 import { Folder, Photo } from '../types';
 import Thumbnail from './Thumbnail';
 import ImageModal from './ImageModal';
-import { FolderIcon, CheckCircleIcon, ClipboardIcon, SparklesIcon, PencilSquareIcon, ExclamationTriangleIcon } from './Icons';
+import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon, ExclamationTriangleIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface FolderCardProps {
     folder: Folder;
     onNameChange: (folderId: string, newName: string) => void;
-    onSuggestName: (folderId: string, photos: File[]) => Promise<string>;
     onEdit: (folderId: string) => void;
 }
 
-const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggestName, onEdit }) => {
+const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onEdit }) => {
     const { t } = useLanguage();
     const [copied, setCopied] = useState(false);
-    const [isSuggesting, setIsSuggesting] = useState(false);
-    const [suggestionError, setSuggestionError] = useState<string | null>(null);
     const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const MAX_THUMBNAILS = 4;
@@ -27,23 +24,6 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
         return date.toISOString().split('T')[0];
     };
     
-    const handleSuggestion = async () => {
-        setIsSuggesting(true);
-        setSuggestionError(null);
-        try {
-            const photoFiles = folder.photos.slice(0, MAX_THUMBNAILS).map(p => p.file).filter((f): f is File => !!f);
-            if (photoFiles.length > 0) {
-                const suggestedName = await onSuggestName(folder.id, photoFiles);
-                onNameChange(folder.id, suggestedName);
-            }
-        } catch (error) {
-            console.error("Failed to get suggestion:", error);
-            setSuggestionError(t('aiSuggestionError'));
-            setTimeout(() => setSuggestionError(null), 5000);
-        } finally {
-            setIsSuggesting(false);
-        }
-    };
 
     const formattedDate = formatDate(folder.representativeDate);
     const finalName = `${formattedDate}_${folder.newName}`;
@@ -125,14 +105,6 @@ const FolderCard: React.FC<FolderCardProps> = ({ folder, onNameChange, onSuggest
                                 <label htmlFor={`folder-name-${folder.id}`} className="block text-sm font-medium text-slate-300">
                                     {t('newFolderNameLabel')}
                                 </label>
-                                <button
-                                    onClick={handleSuggestion}
-                                    disabled={isSuggesting}
-                                    className="flex items-center text-xs text-sky-400 font-semibold hover:text-sky-300 disabled:text-slate-500 disabled:cursor-wait transition-colors"
-                                >
-                                    <SparklesIcon className={`h-4 w-4 mr-1 ${isSuggesting ? 'animate-pulse' : ''}`} />
-                                    {isSuggesting ? t('aiSuggesting') : t('aiSuggestion')}
-                                </button>
                             </div>
                             <div className="flex items-center space-x-0">
                                 <span className="text-slate-300 bg-slate-700 px-3 py-2 rounded-l-md border border-r-0 border-slate-600 whitespace-nowrap">{formattedDate}_</span>

@@ -8,17 +8,6 @@ import { formatScriptDate, getBrowserCompatibilityMessage } from '../utils';
 import { Folder } from '../types';
 import { analytics } from '../utils/analytics';
 
-const fileToBase64 = async (file: File): Promise<{data: string, mimeType: string}> => {
-    const base64EncodedDataPromise = new Promise<string>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-      reader.readAsDataURL(file);
-    });
-    return {
-      data: await base64EncodedDataPromise,
-      mimeType: file.type
-    };
-};
 
 const CrossBrowserFolderOrganizer: React.FC = () => {
     const { t, locale } = useLanguage();
@@ -111,47 +100,6 @@ const CrossBrowserFolderOrganizer: React.FC = () => {
         );
     }, [setFolders]);
     
-    const handleSuggestName = useCallback(async (_folderId: string, photos: File[]): Promise<string> => {
-        const startTime = performance.now();
-        try {
-            analytics.trackEvent('ai_suggestion_start', { photoCount: photos.length });
-            
-            // Convert files to base64 for API transmission
-            const images = await Promise.all(photos.map(fileToBase64));
-            
-            const apiUrl = process.env.NODE_ENV === 'production' 
-                ? 'https://photo-organizer-backend-1024772378605.asia-northeast1.run.app/api/suggest-folder-name'
-                : '/api/suggest-folder-name';
-            
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    images,
-                    locale
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || t('aiSuggestError'));
-            }
-
-            const data = await response.json();
-            const responseTime = performance.now() - startTime;
-            analytics.trackAISuggestionUsed(photos.length, responseTime, true);
-            return data.suggestion;
-        } catch (e) {
-            const responseTime = performance.now() - startTime;
-            analytics.trackAISuggestionUsed(photos.length, responseTime, false);
-            analytics.trackError('ai_suggestion_failed', e instanceof Error ? e.message : String(e), { photoCount: photos.length });
-            console.error("AI suggestion failed", e);
-            setFailure(t('aiSuggestError'));
-            return '';
-        }
-    }, [locale, setFailure, t]);
     
     const formatDateForScript = (date: Date | null): string => {
         if (!date) return t('unknownDate');
@@ -393,7 +341,6 @@ const CrossBrowserFolderOrganizer: React.FC = () => {
                             key={folder.id}
                             folder={folder}
                             onRename={handleRenameFolder}
-                            onSuggestName={handleSuggestName}
                         />
                     ))}
                 </div>

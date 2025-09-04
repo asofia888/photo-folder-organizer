@@ -132,48 +132,6 @@ const FolderOrganizer: React.FC = () => {
         );
     }, [setFolders]);
 
-    const handleSuggestName = useCallback(async (folderId: string, photos: File[]): Promise<string> => {
-        const fileToBase64 = (file: File): Promise<{ mimeType: string, data: string }> => {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const result = reader.result as string;
-                    resolve({
-                        mimeType: file.type,
-                        data: result.split(',')[1]
-                    });
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
-        };
-
-        const imagePayloads = await Promise.all(photos.map(fileToBase64));
-
-        try {
-            // This now points to our secure Cloud Function endpoint via Firebase Hosting rewrites
-            const response = await fetch('/api/generateFolderName', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ images: imagePayloads, locale }),
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API request failed with status ${response.status}: ${errorText}`);
-            }
-
-            const data = await response.json();
-            if (!data.suggestion) {
-                throw new Error("API response did not contain a suggestion.");
-            }
-            return data.suggestion;
-
-        } catch (e) {
-            console.error("AI suggestion failed", e);
-            throw new Error("Failed to get suggestion from AI.");
-        }
-    }, [locale]);
     
     const formatDateForScript = (date: Date | null): string => {
         if (!date) return t('unknownDate');
@@ -409,7 +367,6 @@ const FolderOrganizer: React.FC = () => {
                             key={folder.id}
                             folder={folder}
                             onNameChange={handleNameChange}
-                            onSuggestName={handleSuggestName}
                             onEdit={handleEditFolder}
                         />
                     ))}
