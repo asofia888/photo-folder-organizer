@@ -45,12 +45,37 @@ export const SupportedImageMimeType = {
 
 export type SupportedImageMimeType = typeof SupportedImageMimeType[keyof typeof SupportedImageMimeType];
 
+// Supported RAW file extensions
+export const RAW_EXTENSIONS = [
+  'cr2', 'cr3',        // Canon
+  'nef', 'nrw',        // Nikon  
+  'arw', 'srf', 'sr2', // Sony
+  'dng',               // Adobe
+  'raf',               // Fujifilm
+  'orf',               // Olympus
+  'rw2',               // Panasonic
+  'pef',               // Pentax
+  'srw',               // Samsung
+  'x3f',               // Sigma
+  'kdc',               // Kodak
+  'dcr',               // Kodak
+  'mrw',               // Minolta
+  '3fr',               // Hasselblad
+  'fff',               // Imacon
+  'iiq',               // Phase One
+  'rwl'                // Leica
+] as const;
+
+export type RAWExtension = typeof RAW_EXTENSIONS[number];
+
 // Photo interface with stricter typing - keeping compatible with existing code
 export interface Photo {
   readonly id: string; // PhotoId for strict typing, but string for compatibility
   url: string | null; // Can be null before URL creation
   readonly date: string; // ISODateString for strict typing, but string for compatibility
   readonly file?: File; // Optional for compatibility
+  readonly isRaw?: boolean; // Flag to indicate if this is a RAW file
+  readonly thumbnailUrl?: string; // RAW-specific thumbnail URL
   readonly metadata?: Readonly<{
     width?: number;
     height?: number;

@@ -60,7 +60,14 @@ My_Trip_Photos/  ← この親フォルダをドラッグ＆ドロップ
 ```
 
 ### 💾 対応ファイル形式
-JPEG、PNG、HEIC、WebP、GIF、BMP、TIFF
+**標準画像形式:** JPEG、PNG、HEIC、WebP、GIF、BMP、TIFF
+**RAWファイル形式:** CR2、CR3、NEF、NRW、ARW、SRF、SR2、DNG、RAF、ORF、RW2、PEF、SRW、X3F、KDC、DCR、MRW、3FR、FFF、IIQ、RWL
+
+**📸 RAW対応について:**
+- RAWファイルに埋め込まれたJPEGサムネイルを自動抽出してプレビュー表示
+- EXIF情報を読み取って撮影日による自動ソートに対応
+- Canon、Nikon、Sony、Adobe、Fujifilm、Olympus、Panasonic等の主要メーカーに対応
+- サムネイル抽出ができない場合はRAWアイコンで表示
 
 ## 3. 使い方（ステップ・バイ・ステップ）
 
@@ -209,8 +216,16 @@ JPEG、PNG、HEIC、WebP、GIF、BMP、TIFF
 
 ### 🔍 **その他**
 
-**Q: 対応していない画像形式はありますか？**
-**A:** JPEG、PNG、HEIC、WebP、GIF、BMP、TIFFに対応。RAWファイル（.cr2、.nefなど）は現在非対応です。
+**Q: 対応している画像形式を教えてください**
+**A:** 
+- **標準画像:** JPEG、PNG、HEIC、WebP、GIF、BMP、TIFF
+- **RAWファイル:** CR2、CR3、NEF、NRW、ARW、SRF、SR2、DNG、RAF、ORF、RW2、PEF、SRW、X3F等の主要形式に対応
+
+**Q: RAWファイルのサムネイルが表示されません**
+**A:** RAWファイルに埋め込みサムネイルがない場合があります。その場合はRAWアイコンが表示されますが、EXIF情報は読み取られて日付ソートは正常に動作します。
+
+**Q: RAWファイルの処理が遅いです**
+**A:** RAWファイルは通常のファイルより大きく（20-100MB程度）、処理に時間がかかります。特に100MB以上の大きなファイルでは数秒かかる場合があります。
 
 **Q: 動画ファイルは処理されますか？**
 **A:** 現在は画像ファイルのみ対応しています。動画ファイルは処理対象外です。
