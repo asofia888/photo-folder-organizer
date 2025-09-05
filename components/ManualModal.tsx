@@ -28,9 +28,20 @@ const ManualModal: React.FC<ManualModalProps> = ({ isOpen, onClose }) => {
                     }
                     return response.text();
                 })
-                .then(text => {
-                    const html = marked.parse(text);
-                    setManualContent(html as string);
+                .then(async text => {
+                    try {
+                        const html = await marked.parse(text);
+                        setManualContent(typeof html === 'string' ? html : String(html));
+                    } catch (parseError) {
+                        console.error('Markdown parse error:', parseError);
+                        // Fallback: display as plain text with basic formatting
+                        const fallbackHtml = text
+                            .replace(/\n/g, '<br>')
+                            .replace(/#{1,6}\s+(.*)/g, '<h2 style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600; margin: 1rem 0;">$1</h2>')
+                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+                        setManualContent(fallbackHtml);
+                    }
                 })
                 .catch(err => {
                     console.error(err);
