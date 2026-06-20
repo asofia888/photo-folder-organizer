@@ -90,10 +90,12 @@ export const waitForWorkerMessage = () => {
   return new Promise(resolve => setTimeout(resolve, 0))
 }
 
+// Deliver a worker message synchronously. Tests wrap this in `act(...)`, so the
+// resulting state update is applied and flushed in order before assertions run.
+// (A setTimeout-based version raced with `await act()` and could leave an
+// earlier message applied last.)
 export const mockWorkerResponse = (worker: any, response: any) => {
-  setTimeout(() => {
-    if (worker.onmessage) {
-      worker.onmessage({ data: response })
-    }
-  }, 0)
+  if (worker.onmessage) {
+    worker.onmessage({ data: response })
+  }
 }
