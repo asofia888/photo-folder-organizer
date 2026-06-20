@@ -51,9 +51,9 @@ export interface AppError {
   context?: Record<string, any>;
   originalError?: Error;
   stack?: string;
-  canRetry?: boolean;
-  retryCount?: number;
-  maxRetries?: number;
+  canRetry: boolean;
+  retryCount: number;
+  maxRetries: number;
 }
 
 export interface ErrorRecoveryStrategy {
@@ -258,7 +258,7 @@ class ErrorHandler {
   }
 
   private getDefaultMaxRetries(type: ErrorType): number {
-    const retryMap: Record<ErrorType, number> = {
+    const retryMap: Partial<Record<ErrorType, number>> = {
       [ErrorType.MEMORY_ERROR]: 2,
       [ErrorType.WORKER_ERROR]: 3,
       [ErrorType.PROCESSING_FAILED]: 2,

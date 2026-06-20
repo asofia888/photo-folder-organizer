@@ -1,6 +1,6 @@
 import React, { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
-import { LanguageProvider } from '../contexts/LanguageContext'
+import { LanguageProvider } from '../../contexts/LanguageContext'
 
 // Custom render function that includes providers
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {

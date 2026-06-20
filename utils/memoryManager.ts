@@ -164,7 +164,7 @@ export class MemoryManager {
     
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(batch.map(processor));
+      const batchResults = await Promise.all(batch.map((item) => processor(item)));
       results.push(...batchResults);
       
       // Force garbage collection hint between batches

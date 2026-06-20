@@ -4,7 +4,7 @@ import { Folder, Photo } from '../types';
 import { FolderCardProps } from '../types/componentTypes';
 import Thumbnail from './Thumbnail';
 import ImageModal from './ImageModal';
-import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon, ExclamationTriangleIcon } from './Icons';
+import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { isNonEmptyString, createNonEmptyString } from '../utils/typeGuards';
 
@@ -120,12 +120,6 @@ const FolderCard: React.FC<FolderCardProps> = ({
                                     className="block w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-r-md shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 sm:text-sm text-slate-200 placeholder-slate-400"
                                 />
                             </div>
-                             {suggestionError && (
-                                <div className="mt-2 flex items-center text-sm text-red-400">
-                                    <ExclamationTriangleIcon className="h-4 w-4 mr-2" aria-label={t('errorIconAriaLabel')} />
-                                    {suggestionError}
-                                </div>
-                            )}
                         </div>
                     </>
                 )}

@@ -7,7 +7,7 @@ import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLoad }) => {
   const { getThumbnailUrl } = useLazyThumbnails();
   const [isVisible, setIsVisible] = useState(!lazy);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
 
@@ -117,7 +117,7 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
       ) : (
         <>
           {isLoading && (
-            <div className="absolute inset-0 bg-slate-800 rounded-md shadow-sm ring-1 ring-slate-700 flex items-center justify-center z-10">
+            <div role="status" aria-label="Loading image" className="absolute inset-0 bg-slate-800 rounded-md shadow-sm ring-1 ring-slate-700 flex items-center justify-center z-10">
               <div className="w-6 h-6 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
             </div>
           )}

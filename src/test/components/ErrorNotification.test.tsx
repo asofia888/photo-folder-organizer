@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '../test-utils'
-import ErrorNotification, { ErrorNotificationContainer } from '../../components/ErrorNotification'
-import { AppError, ErrorType, ErrorSeverity, errorHandler } from '../../utils/errorHandler'
+import { render, screen, fireEvent, waitFor, act } from '../test-utils'
+import ErrorNotification, { ErrorNotificationContainer } from '../../../components/ErrorNotification'
+import { AppError, ErrorType, ErrorSeverity, errorHandler } from '../../../utils/errorHandler'
 
 describe('ErrorNotification', () => {
   const mockError: AppError = {
@@ -26,6 +26,7 @@ describe('ErrorNotification', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   describe('rendering', () => {
@@ -49,8 +50,9 @@ describe('ErrorNotification', () => {
         />
       )
 
-      // Should show formatted timestamp
-      expect(screen.getByText(/00:00:00/)).toBeInTheDocument()
+      // Should show a formatted timestamp (H:MM:SS); exact value is locale/TZ
+      // dependent, so match the time pattern rather than a fixed string.
+      expect(screen.getByText(/\d{1,2}:\d{2}:\d{2}/)).toBeInTheDocument()
     })
 
     it('should show retry count when > 0', () => {
@@ -146,7 +148,9 @@ describe('ErrorNotification', () => {
       const retryButton = screen.getByRole('button', { name: /retry/i })
       fireEvent.click(retryButton)
 
-      expect(mockOnRetry).toHaveBeenCalledTimes(1)
+      await waitFor(() => {
+        expect(mockOnRetry).toHaveBeenCalledTimes(1)
+      })
     })
 
     it('should show recovering state during retry', async () => {
@@ -357,6 +361,7 @@ describe('ErrorNotificationContainer', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 
   it('should render nothing when no errors', () => {
@@ -396,103 +401,107 @@ describe('ErrorNotificationContainer', () => {
     })
   })
 
-  it('should auto-dismiss low severity errors', async () => {
+  it('should auto-dismiss low severity errors', () => {
     vi.useFakeTimers()
-    
+
     render(<ErrorNotificationContainer />)
 
     // Trigger low severity error
-    errorHandler.handleError('Low severity error', {
-      type: ErrorType.FILE_NOT_FOUND,
-      severity: ErrorSeverity.LOW
+    act(() => {
+      errorHandler.handleError('Low severity error', {
+        type: ErrorType.FILE_NOT_FOUND,
+        severity: ErrorSeverity.LOW
+      })
     })
 
-    await waitFor(() => {
-      expect(screen.getByText(/File not found/)).toBeInTheDocument()
+    expect(screen.getByText(/File not found/)).toBeInTheDocument()
+
+    // Fast forward 5 seconds to trigger auto-dismiss
+    act(() => {
+      vi.advanceTimersByTime(5000)
     })
 
-    // Fast forward 5 seconds
-    vi.advanceTimersByTime(5000)
-
-    await waitFor(() => {
-      expect(screen.queryByText(/File not found/)).not.toBeInTheDocument()
-    })
-
-    vi.useRealTimers()
+    expect(screen.queryByText(/File not found/)).not.toBeInTheDocument()
   })
 
-  it('should not auto-dismiss high severity errors', async () => {
+  it('should not auto-dismiss high severity errors', () => {
     vi.useFakeTimers()
-    
+
     render(<ErrorNotificationContainer />)
 
     // Trigger high severity error
-    errorHandler.handleError('High severity error', {
-      type: ErrorType.PROCESSING_FAILED,
-      severity: ErrorSeverity.HIGH
+    act(() => {
+      errorHandler.handleError('High severity error', {
+        type: ErrorType.PROCESSING_FAILED,
+        severity: ErrorSeverity.HIGH
+      })
     })
 
-    await waitFor(() => {
-      expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
-    })
+    expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
 
     // Fast forward 10 seconds
-    vi.advanceTimersByTime(10000)
+    act(() => {
+      vi.advanceTimersByTime(10000)
+    })
 
     // Should still be there
     expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
-
-    vi.useRealTimers()
   })
 
-  it('should handle notification dismissal', async () => {
+  it('should handle notification dismissal', () => {
     render(<ErrorNotificationContainer />)
 
     // Trigger an error
-    errorHandler.handleError('Test error', {
-      type: ErrorType.PROCESSING_FAILED,
-      severity: ErrorSeverity.HIGH
+    act(() => {
+      errorHandler.handleError('Test error', {
+        type: ErrorType.PROCESSING_FAILED,
+        severity: ErrorSeverity.HIGH
+      })
     })
 
-    await waitFor(() => {
-      expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
-    })
+    expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
 
     // Dismiss notification
-    const dismissButton = screen.getByRole('button', { name: /dismiss/i })
-    fireEvent.click(dismissButton)
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Failed to process/)).not.toBeInTheDocument()
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
     })
+
+    expect(screen.queryByText(/Failed to process/)).not.toBeInTheDocument()
   })
 
   it('should position notifications correctly', () => {
     render(<ErrorNotificationContainer />)
+
+    // The container only renders once there is a notification to show
+    act(() => {
+      errorHandler.handleError('Test error', {
+        type: ErrorType.PROCESSING_FAILED,
+        severity: ErrorSeverity.HIGH
+      })
+    })
 
     // The container should have fixed positioning
     const container = document.querySelector('.fixed.top-4.right-4')
     expect(container).toBeInTheDocument()
   })
 
-  it('should stack multiple notifications', async () => {
+  it('should stack multiple notifications', () => {
     render(<ErrorNotificationContainer />)
 
     // Trigger multiple errors
-    errorHandler.handleError('Error 1', {
-      type: ErrorType.PROCESSING_FAILED,
-      severity: ErrorSeverity.HIGH
-    })
-    
-    errorHandler.handleError('Error 2', {
-      type: ErrorType.MEMORY_ERROR,
-      severity: ErrorSeverity.MEDIUM
+    act(() => {
+      errorHandler.handleError('Error 1', {
+        type: ErrorType.PROCESSING_FAILED,
+        severity: ErrorSeverity.HIGH
+      })
+      errorHandler.handleError('Error 2', {
+        type: ErrorType.MEMORY_ERROR,
+        severity: ErrorSeverity.MEDIUM
+      })
     })
 
-    await waitFor(() => {
-      expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
-      expect(screen.getByText(/Insufficient memory/)).toBeInTheDocument()
-    })
+    expect(screen.getByText(/Failed to process/)).toBeInTheDocument()
+    expect(screen.getByText(/Insufficient memory/)).toBeInTheDocument()
 
     // Should have proper spacing
     const container = document.querySelector('.space-y-2')

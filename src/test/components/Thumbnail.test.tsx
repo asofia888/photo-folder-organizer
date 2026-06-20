@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '../test-utils'
-import Thumbnail from '../../components/Thumbnail'
-import { Photo } from '../../types'
+import Thumbnail from '../../../components/Thumbnail'
+import { Photo } from '../../../types'
 import { createMockFile } from '../test-utils'
 
-// Mock useLazyThumbnails hook
-vi.mock('../../hooks/useLazyThumbnails', () => ({
-  useLazyThumbnails: () => ({
-    getThumbnailUrl: vi.fn((file) => `mock-url-${file.name}`)
-  })
-}))
+// Mock useLazyThumbnails hook with a stable getThumbnailUrl spy so the component
+// and the tests observe the same mock.
+vi.mock('../../../hooks/useLazyThumbnails', () => {
+  const getThumbnailUrl = vi.fn((file: File) => `mock-url-${file.name}`)
+  return { useLazyThumbnails: () => ({ getThumbnailUrl }) }
+})
 
 describe('Thumbnail', () => {
   const mockPhoto: Photo = {
@@ -45,14 +45,11 @@ describe('Thumbnail', () => {
 
   describe('rendering', () => {
     it('should render placeholder when not visible (lazy=true)', () => {
-      render(<Thumbnail photo={mockPhoto} lazy={true} />)
-      
-      // Should show placeholder initially
-      const placeholder = screen.getByRole('img', { hidden: true })
-      expect(placeholder).toBeInTheDocument()
-      
-      // SVG icon should be present in placeholder
-      expect(screen.getByRole('img')).toBeInTheDocument()
+      const { container } = render(<Thumbnail photo={mockPhoto} lazy={true} />)
+
+      // No actual <img> yet; a skeleton placeholder (svg icon) is shown instead
+      expect(screen.queryByRole('img')).not.toBeInTheDocument()
+      expect(container.querySelector('svg')).toBeInTheDocument()
     })
 
     it('should render image immediately when lazy=false', () => {
@@ -187,7 +184,9 @@ describe('Thumbnail', () => {
       fireEvent.error(image)
       
       await waitFor(() => {
-        const errorContainer = screen.getByText('Failed to load').closest('div')
+        // The error styling lives on the outer container, not the text node's
+        // immediate parent.
+        const errorContainer = screen.getByText('Failed to load').closest('div[class*="bg-red-900"]')
         expect(errorContainer).toHaveClass('bg-red-900/20', 'ring-red-700')
       })
     })
@@ -222,7 +221,7 @@ describe('Thumbnail', () => {
     })
 
     it('should use lazy thumbnail system for File objects', async () => {
-      const { useLazyThumbnails } = await import('../../hooks/useLazyThumbnails')
+      const { useLazyThumbnails } = await import('../../../hooks/useLazyThumbnails')
       const mockGetThumbnailUrl = vi.mocked(useLazyThumbnails().getThumbnailUrl)
       
       const photoWithoutUrl = { ...mockPhoto, url: null }

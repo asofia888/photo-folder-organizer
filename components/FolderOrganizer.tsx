@@ -311,16 +311,16 @@ const FolderOrganizer: React.FC = () => {
             <div className="flex flex-col items-center justify-center min-h-[50vh]">
                 <Spinner />
                 <p className="mt-4 text-lg text-slate-300 font-semibold text-center px-4">{processingMessage}</p>
-                {progress && progress.total > 0 && (
+                {progress && progress.totalFiles > 0 && (
                     <div className="w-full max-w-md mt-4">
                         <div className="w-full bg-slate-700 rounded-full h-2.5">
                             <div
                                 className="bg-sky-500 h-2.5 rounded-full transition-all duration-300 ease-linear"
-                                style={{ width: `${(progress.processed / progress.total) * 100}%` }}
+                                style={{ width: `${(progress.processedFiles / progress.totalFiles) * 100}%` }}
                             ></div>
                         </div>
                         <p className="text-sm text-slate-400 text-center mt-2 font-mono">
-                            {progress.processed} / {progress.total}
+                            {progress.processedFiles} / {progress.totalFiles}
                         </p>
                     </div>
                 )}

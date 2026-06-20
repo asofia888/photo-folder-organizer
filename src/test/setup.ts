@@ -97,5 +97,21 @@ global.console = {
   error: vi.fn(),
 }
 
-// Set up fake timers
-vi.useFakeTimers()
+// jsdom does not implement PromiseRejectionEvent, which the global error
+// handler relies on. Provide a minimal polyfill for tests.
+if (typeof (globalThis as any).PromiseRejectionEvent === 'undefined') {
+  class PromiseRejectionEventPolyfill extends Event {
+    readonly promise: Promise<any>
+    readonly reason: any
+    constructor(type: string, init: { promise: Promise<any>; reason: any }) {
+      super(type)
+      this.promise = init.promise
+      this.reason = init.reason
+    }
+  }
+  ;(globalThis as any).PromiseRejectionEvent = PromiseRejectionEventPolyfill
+}
+
+// NOTE: Fake timers are intentionally NOT enabled globally. Tests that need
+// them enable fake timers locally (beforeEach/afterEach), which avoids hanging
+// any code that awaits a real setTimeout (e.g. error recovery, batch GC hints).
