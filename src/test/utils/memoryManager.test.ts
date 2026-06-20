@@ -36,16 +36,6 @@ describe('MemoryManager', () => {
       expect(stats.objectUrlCount).toBe(0)
     })
 
-    it('should revoke specific object URLs', () => {
-      const mockUrl = 'blob:http://localhost/test-id'
-      // revokeObjectUrl only revokes URLs it is tracking, so seed one first.
-      memoryManager['objectUrls'].add(mockUrl)
-
-      memoryManager.revokeObjectUrl(mockUrl)
-
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl)
-    })
-
     it('should cleanup all object URLs', () => {
       const mockUrls = ['blob:1', 'blob:2', 'blob:3']
       
@@ -166,35 +156,6 @@ describe('MemoryManager', () => {
       }, 0)
       
       await expect(promise).rejects.toThrow('Could not get canvas context')
-    })
-  })
-
-  describe('Batch processing', () => {
-    it('should process items in batches', async () => {
-      const items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-      const processor = vi.fn().mockImplementation(async (item: number) => item * 2)
-      
-      const results = await memoryManager.processImageBatch(items, processor, 3)
-      
-      expect(results).toEqual([2, 4, 6, 8, 10, 12, 14, 16, 18, 20])
-      expect(processor).toHaveBeenCalledTimes(10)
-      
-      // Should be called in batches
-      expect(processor).toHaveBeenNthCalledWith(1, 1)
-      expect(processor).toHaveBeenNthCalledWith(2, 2)
-      expect(processor).toHaveBeenNthCalledWith(3, 3)
-    })
-
-    it('should handle processor errors', async () => {
-      const items = [1, 2, 3]
-      const processor = vi.fn()
-        .mockResolvedValueOnce(2)
-        .mockRejectedValueOnce(new Error('Processing failed'))
-        .mockResolvedValueOnce(6)
-      
-      await expect(
-        memoryManager.processImageBatch(items, processor, 2)
-      ).rejects.toThrow('Processing failed')
     })
   })
 

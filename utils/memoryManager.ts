@@ -153,30 +153,6 @@ export class MemoryManager {
   }
 
   /**
-   * Process images in batches to control memory usage
-   */
-  async processImageBatch<T>(
-    items: T[],
-    processor: (item: T) => Promise<any>,
-    batchSize: number = 5
-  ): Promise<any[]> {
-    const results: any[] = [];
-    
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
-      const batchResults = await Promise.all(batch.map((item) => processor(item)));
-      results.push(...batchResults);
-      
-      // Force garbage collection hint between batches
-      if (i + batchSize < items.length) {
-        await this.forceGarbageCollection();
-      }
-    }
-    
-    return results;
-  }
-
-  /**
    * Force garbage collection (hint to browser)
    */
   private async forceGarbageCollection(): Promise<void> {
@@ -186,16 +162,6 @@ export class MemoryManager {
     // Force garbage collection if available (Chrome DevTools)
     if ('gc' in window && typeof (window as any).gc === 'function') {
       (window as any).gc();
-    }
-  }
-
-  /**
-   * Clean up a specific object URL
-   */
-  revokeObjectUrl(url: string): void {
-    if (this.objectUrls.has(url)) {
-      URL.revokeObjectURL(url);
-      this.objectUrls.delete(url);
     }
   }
 
