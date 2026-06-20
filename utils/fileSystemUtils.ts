@@ -3,7 +3,6 @@
 import {
   ValidFolderName,
   ValidFileName,
-  ProcessingProgress,
   Result,
   AsyncResult,
   SupportedImageMimeType
@@ -18,6 +17,15 @@ import {
   isImageFile,
   validateArray
 } from './typeGuards';
+
+// Progress information emitted while organizing files to disk.
+export interface ProcessingProgress {
+  current: number;
+  total: number;
+  status: 'preparing' | 'creating' | 'moving' | 'completed' | 'error';
+  currentFile?: string;
+  error?: string;
+}
 
 export type ProgressCallback = (progress: ProcessingProgress) => void;
 
@@ -50,7 +58,7 @@ export const isFileSystemAccessSupported = (): boolean => {
 // Type-safe validation of folder organization input
 export const validateOrganizationFolders = (
   folders: unknown[]
-): Result<OrganizationFolder[]> => {
+): Result<OrganizationFolder[], FileSystemError> => {
   const validatedFolders: OrganizationFolder[] = [];
   
   for (let i = 0; i < folders.length; i++) {
@@ -190,7 +198,7 @@ const copyFile = async (
 };
 
 // Type-safe file validation
-const validateImageFiles = (files: File[]): Result<Array<File & { type: SupportedImageMimeType }>> => {
+const validateImageFiles = (files: File[]): Result<Array<File & { type: SupportedImageMimeType }>, FileSystemError> => {
   const validFiles: Array<File & { type: SupportedImageMimeType }> = [];
   
   for (let i = 0; i < files.length; i++) {
@@ -320,7 +328,7 @@ export const organizePhotosToFolders = async (
 
   try {
     // Let user select target directory
-    const targetDirHandle = await window.showDirectoryPicker({
+    const targetDirHandle = await (window as any).showDirectoryPicker({
       mode: 'readwrite'
     });
 

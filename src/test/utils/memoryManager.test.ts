@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import MemoryManager from '../../utils/memoryManager'
+import MemoryManager from '../../../utils/memoryManager'
 import { createMockFile } from '../test-utils'
 
 describe('MemoryManager', () => {
@@ -38,10 +38,11 @@ describe('MemoryManager', () => {
 
     it('should revoke specific object URLs', () => {
       const mockUrl = 'blob:http://localhost/test-id'
-      vi.mocked(URL.createObjectURL).mockReturnValue(mockUrl)
-      
+      // revokeObjectUrl only revokes URLs it is tracking, so seed one first.
+      memoryManager['objectUrls'].add(mockUrl)
+
       memoryManager.revokeObjectUrl(mockUrl)
-      
+
       expect(URL.revokeObjectURL).toHaveBeenCalledWith(mockUrl)
     })
 
@@ -72,13 +73,19 @@ describe('MemoryManager', () => {
       
       vi.spyOn(document, 'createElement').mockReturnValue(mockCanvas)
       vi.spyOn(mockCanvas, 'getContext').mockReturnValue(mockContext as any)
-      vi.spyOn(mockCanvas, 'toDataURL').mockReturnValue('data:image/jpeg;base64,test')
-      
+      vi.spyOn(mockCanvas, 'toDataURL').mockReturnValue('data:image/jpeg;base64,dGVzdA==')
+
       const mockObjectUrl = 'blob:http://localhost/thumbnail'
       vi.mocked(URL.createObjectURL).mockReturnValue(mockObjectUrl)
-      
-      const thumbnailUrl = await memoryManager.createThumbnailUrl(file)
-      
+
+      // jsdom never fires <img> load events, so drive the load manually.
+      const mockImage: any = { onload: null, onerror: null, src: '', width: 400, height: 300 }
+      vi.spyOn(window, 'Image').mockImplementation(() => mockImage)
+
+      const promise = memoryManager.createThumbnailUrl(file)
+      mockImage.onload()
+      const thumbnailUrl = await promise
+
       expect(thumbnailUrl).toBe(mockObjectUrl)
       expect(document.createElement).toHaveBeenCalledWith('canvas')
     })
@@ -90,17 +97,22 @@ describe('MemoryManager', () => {
       
       vi.spyOn(document, 'createElement').mockReturnValue(mockCanvas)
       vi.spyOn(mockCanvas, 'getContext').mockReturnValue(mockContext as any)
-      vi.spyOn(mockCanvas, 'toDataURL').mockReturnValue('data:image/jpeg;base64,test')
-      
+      vi.spyOn(mockCanvas, 'toDataURL').mockReturnValue('data:image/jpeg;base64,dGVzdA==')
+
       const mockObjectUrl = 'blob:http://localhost/thumbnail'
       vi.mocked(URL.createObjectURL).mockReturnValue(mockObjectUrl)
-      
-      // First call should create canvas
-      const url1 = await memoryManager.createThumbnailUrl(file)
-      
-      // Second call should use cached canvas
+
+      const mockImage: any = { onload: null, onerror: null, src: '', width: 400, height: 300 }
+      vi.spyOn(window, 'Image').mockImplementation(() => mockImage)
+
+      // First call creates the canvas (drive the image load manually)
+      const p1 = memoryManager.createThumbnailUrl(file)
+      mockImage.onload()
+      const url1 = await p1
+
+      // Second call should use the cached canvas (no new image load needed)
       const url2 = await memoryManager.createThumbnailUrl(file)
-      
+
       expect(url1).toBe(url2)
       expect(document.createElement).toHaveBeenCalledTimes(1) // Only called once due to caching
     })
@@ -268,8 +280,8 @@ describe('MemoryManager', () => {
 
   describe('Thumbnail size calculation', () => {
     it('should maintain aspect ratio when resizing', () => {
-      const calculateSize = memoryManager['calculateThumbnailSize']
-      
+      const calculateSize = memoryManager['calculateThumbnailSize'].bind(memoryManager)
+
       // Wide image
       expect(calculateSize(400, 200)).toEqual({ width: 200, height: 100 })
       

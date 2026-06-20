@@ -209,7 +209,7 @@ export const isWorkerErrorMessage = (value: unknown): value is WorkerErrorMessag
 };
 
 // Result type helpers with validation
-export const createSuccessResult = <T>(data: T): Result<T> => ({
+export const createSuccessResult = <T, E = Error>(data: T): Result<T, E> => ({
   success: true as const,
   data
 });
@@ -260,7 +260,7 @@ export const safeFind = <T>(
 };
 
 // Validation helpers
-export const validateAndTransform = <T, U>(
+export const validateAndTransform = <T, U extends T>(
   value: T,
   validator: (value: T) => value is U,
   errorMessage: string = 'Validation failed'

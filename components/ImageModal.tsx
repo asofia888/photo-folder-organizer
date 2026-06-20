@@ -4,7 +4,7 @@ import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
 
 interface ImageModalProps {
   photo: Photo | null;
-  photos: Photo[];
+  photos: readonly Photo[];
   isOpen: boolean;
   onClose: () => void;
   onPrevious?: () => void;
@@ -115,7 +115,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
         {/* 画像 */}
         <img
-          src={photo.url}
+          src={photo.url ?? undefined}
           alt={`Photo ${currentIndex + 1} of ${photos.length}`}
           className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-pointer"
           onClick={(e) => e.stopPropagation()}

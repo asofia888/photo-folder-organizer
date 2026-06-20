@@ -177,14 +177,14 @@ export type HandlerFor<T> = T extends React.ChangeEvent<any>
 // Component type utilities
 export type ComponentProps<T> = T extends React.ComponentType<infer P>
   ? P
-  : T extends keyof JSX.IntrinsicElements
-  ? JSX.IntrinsicElements[T]
+  : T extends keyof React.JSX.IntrinsicElements
+  ? React.JSX.IntrinsicElements[T]
   : never;
 
 export type ElementType<T extends React.ElementType> = React.ComponentProps<T>;
 
-export type PropsOf<T extends keyof JSX.IntrinsicElements | React.JSXElementConstructor<any>> = 
-  JSX.LibraryManagedAttributes<T, React.ComponentPropsWithoutRef<T>>;
+export type PropsOf<T extends keyof React.JSX.IntrinsicElements | React.JSXElementConstructor<any>> =
+  React.JSX.LibraryManagedAttributes<T, React.ComponentPropsWithoutRef<T>>;
 
 // Validation and transformation generics
 export type Validator<T, R = boolean> = (value: T) => R;

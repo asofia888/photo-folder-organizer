@@ -1,29 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useLazyThumbnails } from '../../hooks/useLazyThumbnails'
+import { useLazyThumbnails } from '../../../hooks/useLazyThumbnails'
+import MemoryManager from '../../../utils/memoryManager'
 import { createMockFile } from '../test-utils'
 
-// Mock MemoryManager
-vi.mock('../../utils/memoryManager', () => ({
-  default: {
-    getInstance: () => ({
-      registerCleanupCallback: vi.fn(() => vi.fn()),
-      isMemoryUsageHigh: vi.fn(() => false),
-      createThumbnailUrl: vi.fn().mockResolvedValue('mock-efficient-thumbnail-url'),
-      getMemoryStats: vi.fn(() => ({
-        objectUrlCount: 5,
-        canvasCacheSize: 3,
-        estimatedMemoryUsage: '2.5MB',
-        systemMemory: {
-          usedJSHeapSize: 50 * 1024 * 1024,
-          totalJSHeapSize: 100 * 1024 * 1024,
-          jsHeapSizeLimit: 2000 * 1024 * 1024,
-          utilization: 2.5
-        }
-      }))
-    })
+// Mock MemoryManager with a single shared instance so the hook and the tests
+// observe the same spies.
+vi.mock('../../../utils/memoryManager', () => {
+  const instance = {
+    registerCleanupCallback: vi.fn(() => vi.fn()),
+    isMemoryUsageHigh: vi.fn(() => false),
+    createThumbnailUrl: vi.fn(() => Promise.resolve('mock-efficient-thumbnail-url')),
+    getMemoryStats: vi.fn(() => ({
+      objectUrlCount: 5,
+      canvasCacheSize: 3,
+      estimatedMemoryUsage: '2.5MB',
+      systemMemory: {
+        usedJSHeapSize: 50 * 1024 * 1024,
+        totalJSHeapSize: 100 * 1024 * 1024,
+        jsHeapSizeLimit: 2000 * 1024 * 1024,
+        utilization: 2.5
+      }
+    }))
   }
-}))
+  return { default: { getInstance: () => instance } }
+})
 
 describe('useLazyThumbnails', () => {
   beforeEach(() => {
@@ -255,18 +256,19 @@ describe('useLazyThumbnails', () => {
 
   describe('automatic cleanup', () => {
     it('should schedule cleanup after creating thumbnails', () => {
+      const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout')
       const { result } = renderHook(() => useLazyThumbnails())
       const file = createMockFile('test.jpg')
-      
+
       result.current.getThumbnailUrl(file)
-      
+
       // Fast forward time to trigger cleanup
       act(() => {
         vi.advanceTimersByTime(30000) // 30 seconds
       })
-      
-      // Cleanup should have been scheduled
-      expect(setTimeout).toHaveBeenCalled()
+
+      // Cleanup should have been scheduled via setTimeout
+      expect(setTimeoutSpy).toHaveBeenCalled()
     })
 
     it('should clean up old entries based on maxSize', () => {
@@ -329,20 +331,21 @@ describe('useLazyThumbnails', () => {
     })
 
     it('should clear cleanup timers on unmount', () => {
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
       const { result, unmount } = renderHook(() => useLazyThumbnails())
       const file = createMockFile('test.jpg')
-      
+
       result.current.getThumbnailUrl(file)
-      
+
       unmount()
-      
-      expect(clearTimeout).toHaveBeenCalled()
+
+      expect(clearTimeoutSpy).toHaveBeenCalled()
     })
   })
 
   describe('memory manager integration', () => {
     it('should register cleanup callback with memory manager', () => {
-      const mockMemoryManager = require('../../utils/memoryManager').default.getInstance()
+      const mockMemoryManager = MemoryManager.getInstance()
       
       renderHook(() => useLazyThumbnails())
       
@@ -350,8 +353,8 @@ describe('useLazyThumbnails', () => {
     })
 
     it('should use efficient thumbnails when memory is high', () => {
-      const mockMemoryManager = require('../../utils/memoryManager').default.getInstance()
-      mockMemoryManager.isMemoryUsageHigh.mockReturnValue(true)
+      const mockMemoryManager = MemoryManager.getInstance()
+      mockMemoryManager.isMemoryUsageHigh.mockReturnValueOnce(true)
       
       const { result } = renderHook(() => useLazyThumbnails())
       const file = createMockFile('test.jpg')

@@ -1,21 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
-import { useFolderProcessor } from '../../hooks/useFolderProcessor'
+import { renderHook as renderHookBase, act, waitFor } from '@testing-library/react'
+import { useFolderProcessor } from '../../../hooks/useFolderProcessor'
 import { createMockFileSystemDirectoryEntry, createMockFile, mockWorkerResponse } from '../test-utils'
-import MemoryManager from '../../utils/memoryManager'
+import MemoryManager from '../../../utils/memoryManager'
+import { LanguageProvider } from '../../../contexts/LanguageContext'
 
-// Mock MemoryManager
-vi.mock('../../utils/memoryManager', () => ({
-  default: {
-    getInstance: () => ({
-      startMonitoring: vi.fn(),
-      stopMonitoring: vi.fn(),
-      cleanup: vi.fn(),
-      registerCleanupCallback: vi.fn(() => vi.fn()),
-      isMemoryUsageHigh: vi.fn(() => false),
-    })
+// useFolderProcessor calls useLanguage(), so the hook must render inside the
+// LanguageProvider context.
+const renderHook = <T,>(callback: () => T) =>
+  renderHookBase(callback, { wrapper: LanguageProvider })
+
+// Mock MemoryManager with a single shared instance so the hook and the tests
+// observe the same spies.
+vi.mock('../../../utils/memoryManager', () => {
+  const instance = {
+    startMonitoring: vi.fn(),
+    stopMonitoring: vi.fn(),
+    cleanup: vi.fn(),
+    registerCleanupCallback: vi.fn(() => vi.fn()),
+    isMemoryUsageHigh: vi.fn(() => false),
   }
-}))
+  return { default: { getInstance: () => instance } }
+})
 
 describe('useFolderProcessor', () => {
   let mockWorker: any

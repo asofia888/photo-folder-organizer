@@ -11,7 +11,7 @@ const CLEANUP_INTERVAL = 30000; // 30 seconds
 
 export const useLazyThumbnails = () => {
     const [thumbnailUrls] = useState(() => new Map<File, ThumbnailCache>());
-    const cleanupTimer = useRef<NodeJS.Timeout>();
+    const cleanupTimer = useRef<NodeJS.Timeout | undefined>(undefined);
     const memoryManager = useRef(MemoryManager.getInstance());
 
     // Cleanup old URLs periodically to prevent memory leaks
