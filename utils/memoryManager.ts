@@ -1,19 +1,16 @@
 /**
- * Memory management utilities for handling large numbers of images
+ * Lightweight memory monitor. Periodically logs JS heap usage as a development
+ * aid and exposes a snapshot for the in-app PerformanceMonitor overlay.
+ *
+ * Thumbnail object URLs are owned by the components that create them
+ * (Thumbnail / ImageModal create one from a File and revoke it on cleanup),
+ * so this class intentionally holds no URL or canvas caches.
  */
-
-import { ErrorType, ErrorSeverity, handleError } from './errorHandler';
-
 export class MemoryManager {
   private static instance: MemoryManager;
-  private objectUrls: Set<string> = new Set();
-  private canvasCache: Map<string, HTMLCanvasElement> = new Map();
-  private cleanupCallbacks: Array<() => void> = [];
   private memoryCheckInterval?: NodeJS.Timeout;
   private isMonitoring = false;
-  private readonly MAX_CACHE_SIZE = 50;
-  private readonly THUMBNAIL_SIZE = 200;
-  private readonly MEMORY_THRESHOLD = 80; // Percentage
+  private readonly MEMORY_THRESHOLD = 80; // percent of the heap limit
 
   private constructor() {}
 
@@ -25,176 +22,9 @@ export class MemoryManager {
   }
 
   /**
-   * Creates a memory-efficient thumbnail URL
-   */
-  async createThumbnailUrl(file: File): Promise<string> {
-    const cacheKey = `${file.name}_${file.size}_${file.lastModified}`;
-    
-    // Check if we already have a cached canvas
-    const cachedCanvas = this.canvasCache.get(cacheKey);
-    if (cachedCanvas) {
-      return this.canvasToObjectUrl(cachedCanvas);
-    }
-
-    // Create thumbnail
-    const canvas = await this.createThumbnail(file);
-    
-    // Cache management - remove oldest if cache is full
-    if (this.canvasCache.size >= this.MAX_CACHE_SIZE) {
-      const firstKey = this.canvasCache.keys().next().value;
-      if (firstKey) {
-        this.canvasCache.delete(firstKey);
-      }
-    }
-    
-    this.canvasCache.set(cacheKey, canvas);
-    return this.canvasToObjectUrl(canvas);
-  }
-
-  /**
-   * Creates a thumbnail canvas from a file
-   */
-  private async createThumbnail(file: File): Promise<HTMLCanvasElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        const error = new Error('Could not get canvas context');
-        handleError(error, ErrorType.BROWSER_NOT_SUPPORTED, ErrorSeverity.MEDIUM, {
-          operation: 'createThumbnail',
-          fileName: file.name
-        });
-        reject(error);
-        return;
-      }
-
-      img.onload = () => {
-        // Calculate thumbnail dimensions while maintaining aspect ratio
-        const { width, height } = this.calculateThumbnailSize(img.width, img.height);
-        
-        canvas.width = width;
-        canvas.height = height;
-
-        // Draw the image on canvas with high quality
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Clean up the image element
-        img.src = '';
-        img.onload = null;
-        img.onerror = null;
-        
-        resolve(canvas);
-      };
-
-      img.onerror = (event) => {
-        const error = new Error('Failed to load image');
-        handleError(error, ErrorType.FILE_NOT_FOUND, ErrorSeverity.LOW, {
-          fileName: file.name,
-          fileSize: file.size,
-          operation: 'loadImageForThumbnail'
-        });
-        img.src = '';
-        img.onload = null;
-        img.onerror = null;
-        reject(error);
-      };
-
-      img.src = URL.createObjectURL(file);
-    });
-  }
-
-  /**
-   * Calculate thumbnail size maintaining aspect ratio
-   */
-  private calculateThumbnailSize(originalWidth: number, originalHeight: number): { width: number; height: number } {
-    const maxSize = this.THUMBNAIL_SIZE;
-    
-    if (originalWidth <= maxSize && originalHeight <= maxSize) {
-      return { width: originalWidth, height: originalHeight };
-    }
-
-    const aspectRatio = originalWidth / originalHeight;
-    
-    if (originalWidth > originalHeight) {
-      return {
-        width: maxSize,
-        height: Math.round(maxSize / aspectRatio)
-      };
-    } else {
-      return {
-        width: Math.round(maxSize * aspectRatio),
-        height: maxSize
-      };
-    }
-  }
-
-  /**
-   * Convert canvas to object URL and track it
-   */
-  private canvasToObjectUrl(canvas: HTMLCanvasElement): string {
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    
-    // Convert data URL to blob and create object URL
-    const byteCharacters = atob(dataUrl.split(',')[1]);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: 'image/jpeg' });
-    
-    const url = URL.createObjectURL(blob);
-    this.objectUrls.add(url);
-    return url;
-  }
-
-  /**
-   * Force garbage collection (hint to browser)
-   */
-  private async forceGarbageCollection(): Promise<void> {
-    // Create a small delay to allow garbage collection
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
-    // Force garbage collection if available (Chrome DevTools)
-    if ('gc' in window && typeof (window as any).gc === 'function') {
-      (window as any).gc();
-    }
-  }
-
-  /**
-   * Clean up all tracked object URLs
-   */
-  cleanup(): void {
-    this.objectUrls.forEach(url => {
-      URL.revokeObjectURL(url);
-    });
-    this.objectUrls.clear();
-    this.canvasCache.clear();
-    
-    // Run all cleanup callbacks
-    this.cleanupCallbacks.forEach(callback => {
-      try {
-        callback();
-      } catch (error) {
-        console.error('Error in cleanup callback:', error);
-      }
-    });
-    
-    this.stopMonitoring();
-    console.log('MemoryManager: Full cleanup completed');
-  }
-
-  /**
-   * Get memory usage statistics
+   * Snapshot of the JS heap, when the browser exposes performance.memory.
    */
   getMemoryStats(): {
-    objectUrlCount: number;
-    canvasCacheSize: number;
-    estimatedMemoryUsage: string;
     systemMemory?: {
       usedJSHeapSize: number;
       totalJSHeapSize: number;
@@ -202,68 +32,39 @@ export class MemoryManager {
       utilization: number;
     };
   } {
-    const estimatedMemory = (
-      this.objectUrls.size * 0.5 + // ~0.5MB per thumbnail URL
-      this.canvasCache.size * 0.2   // ~0.2MB per cached canvas
-    ).toFixed(1);
-
-    let systemMemory;
     if (typeof window !== 'undefined' && 'performance' in window && 'memory' in (window as any).performance) {
       const memory = (window as any).performance.memory;
-      systemMemory = {
-        usedJSHeapSize: memory.usedJSHeapSize,
-        totalJSHeapSize: memory.totalJSHeapSize,
-        jsHeapSizeLimit: memory.jsHeapSizeLimit,
-        utilization: (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100
+      return {
+        systemMemory: {
+          usedJSHeapSize: memory.usedJSHeapSize,
+          totalJSHeapSize: memory.totalJSHeapSize,
+          jsHeapSizeLimit: memory.jsHeapSizeLimit,
+          utilization: (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100
+        }
       };
     }
-
-    return {
-      objectUrlCount: this.objectUrls.size,
-      canvasCacheSize: this.canvasCache.size,
-      estimatedMemoryUsage: `${estimatedMemory}MB`,
-      systemMemory
-    };
+    return {};
   }
 
   /**
-   * Register cleanup callback
-   */
-  registerCleanupCallback(callback: () => void): () => void {
-    this.cleanupCallbacks.push(callback);
-    return () => {
-      const index = this.cleanupCallbacks.indexOf(callback);
-      if (index > -1) {
-        this.cleanupCallbacks.splice(index, 1);
-      }
-    };
-  }
-
-  /**
-   * Start memory monitoring
+   * Start logging heap usage at the given interval (development aid).
    */
   startMonitoring(intervalMs: number = 10000): void {
     if (this.isMonitoring) return;
 
     this.isMonitoring = true;
     this.memoryCheckInterval = setInterval(() => {
-      const stats = this.getMemoryStats();
-      
-      if (stats.systemMemory) {
-        const utilization = stats.systemMemory.utilization;
-        console.log(`Memory: ${Math.round(stats.systemMemory.usedJSHeapSize / 1024 / 1024)}MB (${utilization.toFixed(1)}%), URLs: ${stats.objectUrlCount}, Cache: ${stats.canvasCacheSize}`);
-        
-        if (utilization > this.MEMORY_THRESHOLD) {
-          console.warn('High memory usage detected, performing cleanup...');
-          this.performEmergencyCleanup();
+      const { systemMemory } = this.getMemoryStats();
+      if (systemMemory) {
+        const usedMb = Math.round(systemMemory.usedJSHeapSize / 1024 / 1024);
+        console.log(`Memory: ${usedMb}MB (${systemMemory.utilization.toFixed(1)}%)`);
+        if (systemMemory.utilization > this.MEMORY_THRESHOLD) {
+          console.warn('High memory usage detected.');
         }
       }
     }, intervalMs);
   }
 
-  /**
-   * Stop memory monitoring
-   */
   stopMonitoring(): void {
     if (this.memoryCheckInterval) {
       clearInterval(this.memoryCheckInterval);
@@ -273,43 +74,14 @@ export class MemoryManager {
   }
 
   /**
-   * Emergency cleanup for high memory situations
+   * Hint the browser to run garbage collection. Only effective when the
+   * runtime exposes `gc` (Chrome with --expose-gc / DevTools); a no-op
+   * otherwise.
    */
-  private performEmergencyCleanup(): void {
-    // Clear half of the canvas cache
-    const cacheEntries = Array.from(this.canvasCache.entries());
-    const toRemove = cacheEntries.slice(0, Math.floor(cacheEntries.length / 2));
-    toRemove.forEach(([key]) => this.canvasCache.delete(key));
-
-    // Clear older object URLs
-    const urls = Array.from(this.objectUrls);
-    if (urls.length > 20) {
-      const toRemove = urls.slice(0, urls.length - 20);
-      toRemove.forEach(url => {
-        URL.revokeObjectURL(url);
-        this.objectUrls.delete(url);
-      });
+  cleanup(): void {
+    if (typeof window !== 'undefined' && 'gc' in window && typeof (window as any).gc === 'function') {
+      (window as any).gc();
     }
-
-    // Run cleanup callbacks
-    this.cleanupCallbacks.forEach(callback => {
-      try {
-        callback();
-      } catch (error) {
-        console.error('Error in cleanup callback:', error);
-      }
-    });
-
-    this.forceGarbageCollection();
-    console.log('Emergency cleanup completed');
-  }
-
-  /**
-   * Check if memory usage is high
-   */
-  isMemoryUsageHigh(): boolean {
-    const stats = this.getMemoryStats();
-    return stats.systemMemory ? stats.systemMemory.utilization > this.MEMORY_THRESHOLD : false;
   }
 }
 

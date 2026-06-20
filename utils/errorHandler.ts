@@ -3,6 +3,7 @@
  */
 
 import { analytics } from './analytics';
+import MemoryManager from './memoryManager';
 
 export enum ErrorType {
   // File System Errors
@@ -110,8 +111,7 @@ class ErrorHandler {
     this.recoveryStrategies.set(ErrorType.MEMORY_ERROR, {
       canRecover: true,
       recoveryAction: async () => {
-        const memoryManager = (await import('./memoryManager')).default.getInstance();
-        memoryManager.cleanup();
+        MemoryManager.getInstance().cleanup();
         await new Promise(resolve => setTimeout(resolve, 1000));
       },
       recoveryMessage: 'Cleaning up memory and retrying...'
