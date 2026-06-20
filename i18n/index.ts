@@ -50,6 +50,7 @@ export const translations = {
     disclaimerTitle: 'Disclaimer',
     disclaimerContent: "This application is provided 'as is'. The developer is not responsible for any loss or alteration of data that may occur from its use. Please ensure you have backups of your important files before proceeding.",
     close: 'Close',
+    previewUnavailable: 'Preview not available for this file.',
     userManual: 'User Manual',
     // File System Operations
     organizeToComputer: 'Organize to Computer',
@@ -146,6 +147,7 @@ export const translations = {
     disclaimerTitle: '免責事項',
     disclaimerContent: 'このアプリケーションは「現状有姿」で提供されます。本アプリケーションの使用によって生じたいかなるデータの損失や変更についても、開発者は責任を負いません。続行する前に、重要なファイルのバックアップがあることを確認してください。',
     close: '閉じる',
+    previewUnavailable: 'このファイルのプレビューは表示できません。',
     userManual: '使い方マニュアル',
     // File System Operations
     organizeToComputer: 'コンピューターに整理',

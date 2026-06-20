@@ -199,20 +199,28 @@ describe('useFolderProcessor', () => {
       // Mock directory with subdirectory but no image files
       const mockDirectory = {
         name: 'no-images-folder',
-        createReader: () => ({
-          readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-            const subDir = {
-              name: 'subfolder',
-              isDirectory: true,
-              createReader: () => ({
-                readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-                  callback([]) // No image files
-                }
-              })
+        createReader: () => {
+          let read = false
+          return {
+            readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
+              if (read) {
+                callback([]) // Reader exhausted — stop the read loop
+                return
+              }
+              read = true
+              const subDir = {
+                name: 'subfolder',
+                isDirectory: true,
+                createReader: () => ({
+                  readEntries: (cb: (entries: FileSystemEntry[]) => void) => {
+                    cb([]) // No image files
+                  }
+                })
+              }
+              callback([subDir as unknown as FileSystemEntry])
             }
-            callback([subDir])
           }
-        })
+        }
       } as FileSystemDirectoryEntry
       
       await act(async () => {
@@ -271,8 +279,8 @@ describe('useFolderProcessor', () => {
         })
       })
       
-      expect(result.current.progress.processedFolders).toBe(1)
-      expect(result.current.progress.processedFiles).toBe(3)
+      expect(result.current.progress!.processedFolders).toBe(1)
+      expect(result.current.progress!.processedFiles).toBe(3)
       expect(result.current.processingMessage).toContain('folder1')
       
       // File-level progress
@@ -288,7 +296,7 @@ describe('useFolderProcessor', () => {
         })
       })
       
-      expect(result.current.progress.processedFiles).toBe(5)
+      expect(result.current.progress!.processedFiles).toBe(5)
     })
   })
 
@@ -377,7 +385,7 @@ describe('useFolderProcessor', () => {
         createReader: () => {
           throw new Error('Reader creation failed')
         }
-      } as FileSystemDirectoryEntry
+      } as unknown as FileSystemDirectoryEntry
       
       await act(async () => {
         try {

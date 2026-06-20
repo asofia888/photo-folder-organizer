@@ -9,7 +9,7 @@ global.IntersectionObserver = vi.fn(() => ({
   disconnect: vi.fn(),
   observe: vi.fn(),
   unobserve: vi.fn(),
-}))
+})) as unknown as typeof IntersectionObserver
 
 // Mock ResizeObserver
 global.ResizeObserver = vi.fn(() => ({
@@ -34,7 +34,7 @@ global.FileReader = vi.fn(() => ({
   EMPTY: 0,
   LOADING: 1,
   DONE: 2,
-}))
+})) as unknown as typeof FileReader
 
 // Mock Worker
 global.Worker = vi.fn(() => ({
@@ -42,7 +42,7 @@ global.Worker = vi.fn(() => ({
   terminate: vi.fn(),
   onmessage: null,
   onerror: null,
-}))
+})) as unknown as typeof Worker
 
 // Mock performance.memory for memory management tests
 Object.defineProperty(performance, 'memory', {

@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Photo } from '../types';
 import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ImageModalProps {
   photo: Photo | null;
@@ -19,6 +20,9 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onPrevious,
   onNext
 }) => {
+  const { t } = useLanguage();
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
+
   // キーボードナビゲーション
   useEffect(() => {
     if (!isOpen) return;
@@ -59,6 +63,35 @@ const ImageModal: React.FC<ImageModalProps> = ({
       document.body.style.overflow = 'unset';
     };
   }, [isOpen]);
+
+  // 表示用の画像URLを解決する。サムネイルは遅延生成のため photo.url は通常 null。
+  // RAW は抽出済みサムネイルJPEGを使い、通常画像は File から ObjectURL を生成して
+  // 写真の切り替え・モーダルを閉じる際に解放する（リーク防止）。
+  useEffect(() => {
+    if (!isOpen || !photo) {
+      setImageSrc(null);
+      return;
+    }
+
+    if (photo.isRaw) {
+      setImageSrc(photo.thumbnailUrl ?? null);
+      return;
+    }
+
+    if (photo.url) {
+      setImageSrc(photo.url);
+      return;
+    }
+
+    if (photo.file) {
+      const objectUrl = URL.createObjectURL(photo.file);
+      setImageSrc(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+
+    setImageSrc(null);
+    return;
+  }, [isOpen, photo]);
 
   if (!isOpen || !photo) return null;
 
@@ -114,12 +147,21 @@ const ImageModal: React.FC<ImageModalProps> = ({
         )}
 
         {/* 画像 */}
-        <img
-          src={photo.url ?? undefined}
-          alt={`Photo ${currentIndex + 1} of ${photos.length}`}
-          className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-pointer"
-          onClick={(e) => e.stopPropagation()}
-        />
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={`Photo ${currentIndex + 1} of ${photos.length}`}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <div
+            className="flex items-center justify-center text-slate-400 bg-slate-800/80 rounded-lg p-12 text-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {t('previewUnavailable')}
+          </div>
+        )}
 
         {/* 画像インジケーター */}
         {hasMultiple && (

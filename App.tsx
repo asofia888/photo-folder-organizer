@@ -19,10 +19,10 @@ const AppContent: React.FC = () => {
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center">
-                            <img 
-                                src="/logo.jpeg" 
-                                alt="Photo Folder Organizer Logo" 
-                                className="h-8 w-8 rounded object-cover"
+                            <img
+                                src="/logo.png"
+                                alt="Photo Folder Organizer Logo"
+                                className="h-8 w-8 object-contain"
                             />
                             <h1 className="ml-3 text-2xl font-bold text-slate-100 tracking-tight">
                                 {t('appTitle')}

@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Photo } from '../types';
 import { ThumbnailProps } from '../types/componentTypes';
-import { useLazyThumbnails } from '../hooks/useLazyThumbnails';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
 
 const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLoad }) => {
-  const { getThumbnailUrl } = useLazyThumbnails();
   const [isVisible, setIsVisible] = useState(!lazy);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const imgRef = useRef<HTMLDivElement>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Intersection Observer for lazy loading
+  // Lazy loading: mark visible once the card scrolls near the viewport.
   useEffect(() => {
     if (!lazy || isVisible) return;
 
@@ -30,12 +28,38 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
       }
     );
 
-    if (imgRef.current) {
-      observer.observe(imgRef.current);
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
     }
 
     return () => observer.disconnect();
   }, [lazy, isVisible]);
+
+  // Resolve the displayable source once visible. Regular images get an object
+  // URL created from their File and revoked on cleanup (photo change / unmount);
+  // RAW files use the JPEG thumbnail extracted in the worker.
+  useEffect(() => {
+    if (!isVisible) return;
+
+    if (photo.isRaw) {
+      setSrc(photo.thumbnailUrl ?? null);
+      return;
+    }
+
+    if (photo.url) {
+      setSrc(photo.url);
+      return;
+    }
+
+    if (photo.file) {
+      const objectUrl = URL.createObjectURL(photo.file);
+      setSrc(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    }
+
+    setSrc(null);
+    return;
+  }, [isVisible, photo]);
 
   const handleImageLoad = () => {
     setIsLoading(false);
@@ -58,28 +82,11 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
     setHasError(true);
   };
 
-  const getThumbnailSrc = (): string => {
-    // For RAW files, prioritize extracted thumbnail URL
-    if (photo.isRaw && photo.thumbnailUrl) {
-      return photo.thumbnailUrl;
-    }
-    
-    // If we already have a URL from the old system, use it
-    if (photo.url && photo.url !== 'null' && !photo.url.startsWith('blob:')) {
-      return photo.url;
-    }
-    
-    // Use lazy thumbnail system for regular image files
-    if (photo.file && !photo.isRaw) {
-      return getThumbnailUrl(photo.file);
-    }
-    
-    // Fallback for RAW files without thumbnails or other edge cases
-    return photo.url || '';
-  };
+  // RAW file whose thumbnail could not be extracted in the worker.
+  const showRawPlaceholder = !!photo.isRaw && !photo.thumbnailUrl;
 
   return (
-    <div ref={imgRef} className="aspect-w-1 aspect-h-1 group relative">
+    <div ref={containerRef} className="aspect-w-1 aspect-h-1 group relative">
       {!isVisible ? (
         // Placeholder while not visible
         <div className="w-full h-full bg-slate-800 rounded-md shadow-sm ring-1 ring-slate-700 flex items-center justify-center">
@@ -89,15 +96,15 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
             </svg>
           </div>
         </div>
-      ) : hasError || (photo.isRaw && !photo.thumbnailUrl) ? (
+      ) : hasError || showRawPlaceholder ? (
         // Error placeholder or RAW file without thumbnail
         <div className={`w-full h-full rounded-md shadow-sm ring-1 flex items-center justify-center ${
-          photo.isRaw && !photo.thumbnailUrl 
-            ? 'bg-orange-900/20 ring-orange-700' 
+          showRawPlaceholder
+            ? 'bg-orange-900/20 ring-orange-700'
             : 'bg-red-900/20 ring-red-700'
         }`}>
           <div className="text-center p-2">
-            {photo.isRaw && !photo.thumbnailUrl ? (
+            {showRawPlaceholder ? (
               <>
                 <div className="w-8 h-8 mx-auto mb-1 text-orange-400">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -122,7 +129,7 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ photo, onClick, lazy = true, onLo
             </div>
           )}
           <img
-            src={getThumbnailSrc()}
+            src={src ?? undefined}
             alt="Photo thumbnail"
             className={`object-cover w-full h-full rounded-md shadow-sm transition-all duration-300 ring-1 ring-slate-700 group-hover:ring-sky-500 group-hover:scale-105 ${
               onClick ? 'cursor-pointer hover:brightness-110' : ''

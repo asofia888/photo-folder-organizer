@@ -14,8 +14,8 @@ import { createMockFileSystemDirectoryEntry, createMockFile } from '../test-util
 const mockWorker = {
   postMessage: vi.fn(),
   terminate: vi.fn(),
-  onmessage: null,
-  onerror: null,
+  onmessage: null as ((ev: MessageEvent) => void) | null,
+  onerror: null as ((ev: ErrorEvent) => void) | null,
 }
 
 vi.mocked(Worker).mockImplementation(() => mockWorker as any)
@@ -162,7 +162,6 @@ describe.skip('Error Handling Integration', () => {
           type: ErrorType.NETWORK_ERROR,
           severity: ErrorSeverity.MEDIUM,
           canRetry: true,
-          retryCount: 0,
           maxRetries: 3
         })
       })
@@ -196,7 +195,6 @@ describe.skip('Error Handling Integration', () => {
           type: ErrorType.PROCESSING_FAILED,
           severity: ErrorSeverity.HIGH,
           canRetry: true,
-          retryCount: 3,
           maxRetries: 3
         })
       })
@@ -325,8 +323,7 @@ describe.skip('Error Handling Integration', () => {
       act(() => {
         errorHandler.handleError('Thumbnail generation failed', {
           type: ErrorType.PROCESSING_FAILED,
-          severity: ErrorSeverity.HIGH,
-          originalError: technicalError
+          severity: ErrorSeverity.HIGH
         })
       })
 
