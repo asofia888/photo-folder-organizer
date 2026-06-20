@@ -354,7 +354,7 @@ describe('useLazyThumbnails', () => {
 
     it('should use efficient thumbnails when memory is high', () => {
       const mockMemoryManager = MemoryManager.getInstance()
-      mockMemoryManager.isMemoryUsageHigh.mockReturnValueOnce(true)
+      vi.mocked(mockMemoryManager.isMemoryUsageHigh).mockReturnValueOnce(true)
       
       const { result } = renderHook(() => useLazyThumbnails())
       const file = createMockFile('test.jpg')

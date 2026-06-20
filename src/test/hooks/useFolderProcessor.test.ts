@@ -210,7 +210,7 @@ describe('useFolderProcessor', () => {
                 }
               })
             }
-            callback([subDir])
+            callback([subDir as unknown as FileSystemEntry])
           }
         })
       } as FileSystemDirectoryEntry
@@ -271,8 +271,8 @@ describe('useFolderProcessor', () => {
         })
       })
       
-      expect(result.current.progress.processedFolders).toBe(1)
-      expect(result.current.progress.processedFiles).toBe(3)
+      expect(result.current.progress!.processedFolders).toBe(1)
+      expect(result.current.progress!.processedFiles).toBe(3)
       expect(result.current.processingMessage).toContain('folder1')
       
       // File-level progress
@@ -288,7 +288,7 @@ describe('useFolderProcessor', () => {
         })
       })
       
-      expect(result.current.progress.processedFiles).toBe(5)
+      expect(result.current.progress!.processedFiles).toBe(5)
     })
   })
 
@@ -377,7 +377,7 @@ describe('useFolderProcessor', () => {
         createReader: () => {
           throw new Error('Reader creation failed')
         }
-      } as FileSystemDirectoryEntry
+      } as unknown as FileSystemDirectoryEntry
       
       await act(async () => {
         try {
