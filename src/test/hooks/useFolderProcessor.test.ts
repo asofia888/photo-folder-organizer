@@ -199,20 +199,28 @@ describe('useFolderProcessor', () => {
       // Mock directory with subdirectory but no image files
       const mockDirectory = {
         name: 'no-images-folder',
-        createReader: () => ({
-          readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-            const subDir = {
-              name: 'subfolder',
-              isDirectory: true,
-              createReader: () => ({
-                readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-                  callback([]) // No image files
-                }
-              })
+        createReader: () => {
+          let read = false
+          return {
+            readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
+              if (read) {
+                callback([]) // Reader exhausted — stop the read loop
+                return
+              }
+              read = true
+              const subDir = {
+                name: 'subfolder',
+                isDirectory: true,
+                createReader: () => ({
+                  readEntries: (cb: (entries: FileSystemEntry[]) => void) => {
+                    cb([]) // No image files
+                  }
+                })
+              }
+              callback([subDir as unknown as FileSystemEntry])
             }
-            callback([subDir as unknown as FileSystemEntry])
           }
-        })
+        }
       } as FileSystemDirectoryEntry
       
       await act(async () => {

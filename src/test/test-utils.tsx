@@ -30,22 +30,43 @@ export const createMockFile = (
   return file
 }
 
+// A real FileSystemDirectoryReader returns its entries in batches and then an
+// empty array once exhausted. Mocks MUST honour that: useFolderProcessor reads
+// in a `do { ... } while (entries.length > 0)` loop, so a reader that always
+// returns the same non-empty batch would loop forever (and exhaust the heap).
+const readerReturning = (entries: FileSystemEntry[]) => () => {
+  let read = false
+  return {
+    readEntries: (successCallback: (entries: FileSystemEntry[]) => void) => {
+      successCallback(read ? [] : entries)
+      read = true
+    }
+  }
+}
+
 export const createMockFileSystemDirectoryEntry = (
   name: string = 'test-folder',
   files: File[] = []
 ): FileSystemDirectoryEntry => {
+  // processDirectory scans the dropped folder for sub-directories and reads the
+  // photos inside each one, so nest the files under a single sub-directory.
+  const fileEntries = files.map(file => createMockFileSystemFileEntry(file.name, file))
+  const subDirectory = {
+    name: 'subfolder',
+    fullPath: `/${name}/subfolder`,
+    isFile: false,
+    isDirectory: true,
+    filesystem: {} as any,
+    createReader: readerReturning(fileEntries),
+  } as unknown as FileSystemDirectoryEntry
+
   return {
     name,
     fullPath: `/${name}`,
     isFile: false,
     isDirectory: true,
     filesystem: {} as any,
-    createReader: () => ({
-      readEntries: (successCallback: (entries: FileSystemEntry[]) => void) => {
-        const entries = files.map(file => createMockFileSystemFileEntry(file.name, file))
-        successCallback(entries)
-      }
-    }),
+    createReader: readerReturning([subDirectory]),
   } as FileSystemDirectoryEntry
 }
 
