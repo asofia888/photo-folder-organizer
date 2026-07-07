@@ -68,6 +68,14 @@ export const RAW_EXTENSIONS = [
 
 export type RAWExtension = typeof RAW_EXTENSIONS[number];
 
+// Standard (non-RAW) image extensions. Single source of truth shared by the
+// folder scanner and the organize-to-computer validation so they can't diverge.
+export const STANDARD_IMAGE_EXTENSIONS = [
+  'jpg', 'jpeg', 'png', 'heic', 'webp', 'gif', 'bmp', 'tiff'
+] as const;
+
+export type StandardImageExtension = typeof STANDARD_IMAGE_EXTENSIONS[number];
+
 // Photo interface with stricter typing - keeping compatible with existing code
 export interface Photo {
   readonly id: string; // PhotoId for strict typing, but string for compatibility
@@ -102,6 +110,13 @@ export interface Folder {
       latest: Date;
     };
   }>;
+}
+
+// A file the worker dropped from the results, reported to the user on completion
+export interface SkippedFile {
+  readonly folderName: string;
+  readonly fileName: string;
+  readonly reason: 'tooLarge' | 'unreadable';
 }
 
 // Processing progress interface
@@ -176,7 +191,7 @@ export const SupportedLanguage = {
 export type SupportedLanguage = typeof SupportedLanguage[keyof typeof SupportedLanguage];
 
 // Component prop types with strict generics
-export interface ComponentWithChildren<P = {}> {
+export interface ComponentWithChildren<P = Record<string, unknown>> {
   children?: React.ReactNode;
   props?: P;
 }

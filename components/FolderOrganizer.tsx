@@ -1,9 +1,8 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import FolderCard from './FolderCard';
 import Spinner from './Spinner';
 import ProgressModal from './ProgressModal';
-import { VirtualScrollGrid } from './VirtualScrollGrid';
 import PerformanceMonitor from './PerformanceMonitor';
 import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon, ComputerDesktopIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -11,6 +10,7 @@ import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
 import { organizePhotosToFolders, isFileSystemAccessSupported, isValidFolderNameBoolean, ProcessingProgress } from '../utils/fileSystemUtils';
 import { Folder } from '../types';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
+import { formatScriptDate } from '../utils/dateUtils';
 
 // --- Utility Functions ---
 
@@ -47,21 +47,24 @@ const createRenameScriptBlob = (
 // --- Component ---
 
 const FolderOrganizer: React.FC = () => {
-    const { t, locale } = useLanguage();
+    const { t } = useLanguage();
     const { 
-        status, 
-        folders, 
-        setFolders, 
-        error, 
-        processingMessage, 
-        rootFolderName, 
-        progress, 
-        processDirectory, 
+        status,
+        folders,
+        setFolders,
+        skippedFiles,
+        error,
+        processingMessage,
+        rootFolderName,
+        progress,
+        processDirectory,
+        processFileList,
         reset,
         cleanup,
         setFailure
     } = useFolderProcessor();
 
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dateLogic, setDateLogic] = useState<DateLogic>('earliest');
     const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(process.env.NODE_ENV === 'development');
@@ -108,6 +111,19 @@ const FolderOrganizer: React.FC = () => {
         setIsDragging(false);
     };
 
+    const openFolderPicker = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
+
+    const handleFolderSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (files && files.length > 0) {
+            processFileList(Array.from(files), dateLogic);
+        }
+        // Allow re-selecting the same folder to trigger another run.
+        event.target.value = '';
+    }, [processFileList, dateLogic]);
+
     const handleNameChange = useCallback((folderId: string, newName: string) => {
         setFolders(prevFolders =>
             prevFolders.map(folder =>
@@ -139,7 +155,7 @@ const FolderOrganizer: React.FC = () => {
     
     const formatDateForScript = (date: Date | null): string => {
         if (!date) return t('unknownDate');
-        return date.toISOString().split('T')[0];
+        return formatScriptDate(date);
     };
 
     // File System Access functionality
@@ -154,7 +170,7 @@ const FolderOrganizer: React.FC = () => {
         const foldersToOrganize = folders.filter(f => f.isRenamed).map(folder => {
             const finalName = `${formatDateForScript(folder.representativeDate)}_${folder.newName}`;
             if (!isValidFolderNameBoolean(finalName)) {
-                validationErrors.push(`Invalid folder name: ${finalName}`);
+                validationErrors.push(t('invalidFolderNameAlert', { name: finalName }));
             }
             return {
                 name: finalName,
@@ -163,12 +179,12 @@ const FolderOrganizer: React.FC = () => {
         });
 
         if (validationErrors.length > 0) {
-            alert(`Please fix these folder names:\n${validationErrors.join('\n')}`);
+            alert(`${t('fixFolderNamesAlert')}\n${validationErrors.join('\n')}`);
             return;
         }
 
         if (foldersToOrganize.length === 0) {
-            alert('No folders are ready to organize. Please rename at least one folder.');
+            alert(t('noFoldersReadyAlert'));
             return;
         }
 
@@ -238,7 +254,7 @@ const FolderOrganizer: React.FC = () => {
                 <div className="mb-10 max-w-3xl lg:max-w-5xl mx-auto">
                     <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gradient tracking-tight lg:whitespace-nowrap">{t('catchphraseMain')}</h2>
                     <p className="mt-4 text-lg text-slate-300">{t('catchphraseSub')}</p>
-                    <p className="mt-2 text-sm text-green-400 font-medium">あなたの写真はブラウザ内でローカルに処理され、アップロードされることはありません</p>
+                    <p className="mt-2 text-sm text-green-400 font-medium">{t('privacyDescription')}</p>
                 </div>
 
                 <div className="p-8 sm:p-10 bg-slate-800/50 rounded-2xl border border-slate-700/80">
@@ -248,16 +264,40 @@ const FolderOrganizer: React.FC = () => {
                             <p className="text-red-400">{error}</p>
                         </div>
                     )}
+                    {/* Kept outside the drop zone: a programmatic click() on a child
+                        input would bubble back to the zone's onClick and reopen the
+                        picker. webkitdirectory is not in React's TS prop types, so
+                        it is passed via spread. */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        onChange={handleFolderSelect}
+                        {...{ webkitdirectory: '' }}
+                    />
                     <div
                         onDrop={handleDrop}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
-                        className={`p-10 border-2 border-dashed rounded-xl transition-all duration-300 ${isDragging ? 'border-sky-500 bg-sky-500/10 shadow-2xl shadow-sky-500/10' : 'border-slate-600 bg-slate-800'}`}
+                        onClick={openFolderPicker}
+                        onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                openFolderPicker();
+                            }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={t('dropZoneTitle')}
+                        className={`p-10 border-2 border-dashed rounded-xl transition-all duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-500 ${isDragging ? 'border-sky-500 bg-sky-500/10 shadow-2xl shadow-sky-500/10' : 'border-slate-600 bg-slate-800 hover:border-slate-500'}`}
                     >
                         <div className="flex flex-col items-center pointer-events-none">
                             <FolderArrowDownIcon className="h-16 w-16 text-slate-500 mb-4" />
                             <h3 className="text-2xl font-bold text-slate-200">{t('dropZoneTitle')}</h3>
                             <p className="text-slate-300 mt-2 max-w-md">{t('dropZoneDescription')}</p>
+                            <p className="text-slate-400 mt-2 text-sm">{t('dropZoneClickHint')}</p>
                         </div>
                     </div>
 
@@ -373,9 +413,7 @@ const FolderOrganizer: React.FC = () => {
                                     <strong>{t('browserCompatibilityTitle')}</strong> {t('fileSystemNotSupported')}
                                     <br />
                                     <span className="text-blue-200 text-xs">
-                                        {locale === 'ja' 
-                                            ? 'Chrome・Edgeなら「コンピューターに整理」ボタンで直接整理できます。' 
-                                            : 'Use Chrome or Edge for direct "Organize to Computer" functionality.'}
+                                        {t('organizeHintChromeEdge')}
                                     </span>
                                 </div>
                             </div>
@@ -390,44 +428,48 @@ const FolderOrganizer: React.FC = () => {
                         </button>
                     </div>
                 </div>
-                
-                {folders.length > 20 ? (
-                    // Use virtual scrolling for large lists
-                    <div className="mb-6">
-                        <div className="mb-4 text-sm text-slate-400">
-                            Showing {folders.length} folders (virtual scrolling enabled for better performance)
-                        </div>
-                        <VirtualScrollGrid
-                            items={folders}
-                            itemHeight={400} // Approximate height of FolderCard
-                            containerHeight={Math.min(1200, Math.max(800, folders.length * 50))} // Dynamic height with limits
-                            overscan={2}
-                            className="rounded-lg border border-slate-700/50 bg-slate-900/50"
-                            renderItem={(folder, index) => (
-                                <div className="p-4 border-b border-slate-700/30 last:border-b-0">
-                                    <FolderCard
-                                        key={folder.id}
-                                        folder={folder}
-                                        onNameChange={handleNameChange}
-                                        onEdit={handleEditFolder}
-                                    />
-                                </div>
-                            )}
-                        />
+
+                {skippedFiles.length > 0 && (
+                    <div className="mb-8 p-4 bg-amber-900/30 border border-amber-500/40 rounded-lg">
+                        <p className="text-sm font-semibold text-amber-200">
+                            {t('skippedFilesNotice', { count: skippedFiles.length })}
+                        </p>
+                        <details className="mt-2 text-sm text-amber-200/90">
+                            <summary className="cursor-pointer text-amber-300 hover:text-amber-200">
+                                {t('skippedFilesShowDetails')}
+                            </summary>
+                            <ul className="mt-2 list-disc list-inside space-y-1 max-h-40 overflow-y-auto">
+                                {skippedFiles.map((file, index) => (
+                                    <li key={`${file.folderName}/${file.fileName}-${index}`}>
+                                        {file.folderName}/{file.fileName}
+                                        {' — '}
+                                        {t(file.reason === 'tooLarge' ? 'skipReasonTooLarge' : 'skipReasonUnreadable')}
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
                     </div>
-                ) : (
-                    // Use regular grid for smaller lists
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {folders.map(folder => (
+                )}
+
+                {/* Cards have variable heights, so fixed-row virtualization
+                    clipped and overlapped them. Thumbnails already lazy-load
+                    via IntersectionObserver; content-visibility lets the
+                    browser skip rendering offscreen cards, so one grid scales
+                    to large folder counts. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {folders.map(folder => (
+                        <div
+                            key={folder.id}
+                            style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 420px' }}
+                        >
                             <FolderCard
-                                key={folder.id}
                                 folder={folder}
                                 onNameChange={handleNameChange}
                                 onEdit={handleEditFolder}
                             />
-                        ))}
-                    </div>
-                )}
+                        </div>
+                    ))}
+                </div>
 
                  <div className="mt-12 p-6 bg-slate-800/50 rounded-2xl shadow-lg border border-slate-700/80">
                     <h3 className="text-xl font-bold text-slate-100">{t('renameScriptInstructionsTitle')}</h3>

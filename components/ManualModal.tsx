@@ -23,7 +23,11 @@ const ManualModal: React.FC<ManualModalProps> = ({ isOpen, onClose }) => {
             setError('');
             fetch('/MANUAL.md')
                 .then(response => {
-                    if (!response.ok) {
+                    // The SPA rewrite (vercel.json) serves index.html with a 200
+                    // for missing files, so an HTML response means the manual is
+                    // absent from the build — fail instead of rendering it.
+                    const contentType = response.headers.get('content-type') ?? '';
+                    if (!response.ok || contentType.includes('text/html')) {
                         throw new Error('Could not load manual.');
                     }
                     return response.text();

@@ -2,20 +2,15 @@
 
 import {
   ValidFolderName,
-  ValidFileName,
   Result,
-  AsyncResult,
-  SupportedImageMimeType
+  AsyncResult
 } from '../types';
 import {
   createValidFolderName,
   createValidFileName,
-  isValidFolderName,
-  isValidFileName,
   createSuccessResult,
   createErrorResult,
-  isImageFile,
-  validateArray
+  isImageFile
 } from './typeGuards';
 
 // Progress information emitted while organizing files to disk.
@@ -144,17 +139,6 @@ export const validateOrganizationFolders = (
   return createSuccessResult(validatedFolders);
 };
 
-// Check if a file handle supports writing (to ensure we can move files)
-const canWriteFile = async (fileHandle: FileSystemFileHandle): Promise<boolean> => {
-  try {
-    const writable = await fileHandle.createWritable();
-    await writable.close();
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 // Create a new folder in the target directory with type safety
 export const createFolder = async (
   directoryHandle: FileSystemDirectoryHandle,
@@ -178,7 +162,7 @@ export const createFolder = async (
 
 // Copy a file to a new location with type safety
 const copyFile = async (
-  sourceFile: File & { type: SupportedImageMimeType },
+  sourceFile: File,
   targetHandle: FileSystemFileHandle
 ): FileSystemResult<void> => {
   try {
@@ -198,9 +182,9 @@ const copyFile = async (
 };
 
 // Type-safe file validation
-const validateImageFiles = (files: File[]): Result<Array<File & { type: SupportedImageMimeType }>, FileSystemError> => {
-  const validFiles: Array<File & { type: SupportedImageMimeType }> = [];
-  
+const validateImageFiles = (files: File[]): Result<File[], FileSystemError> => {
+  const validFiles: File[] = [];
+
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     if (!isImageFile(file)) {
@@ -214,7 +198,7 @@ const validateImageFiles = (files: File[]): Result<Array<File & { type: Supporte
     }
     validFiles.push(file);
   }
-  
+
   return createSuccessResult(validFiles);
 };
 
