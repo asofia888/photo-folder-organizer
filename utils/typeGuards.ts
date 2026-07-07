@@ -17,7 +17,9 @@ import {
   WorkerErrorMessage,
   SupportedLanguage,
   Result,
-  AsyncResult
+  AsyncResult,
+  RAW_EXTENSIONS,
+  STANDARD_IMAGE_EXTENSIONS
 } from '../types';
 
 // Brand type creators for safer string handling
@@ -26,14 +28,24 @@ export const createNonEmptyString = (value: string): NonEmptyString | null => {
 };
 
 export const createValidFileName = (value: string): ValidFileName | null => {
-  // Check for valid filename characters (no path separators, null bytes, etc.)
-  const invalidChars = /[<>:"|?*\x00-\x1f]/;
+  // Reject path separators, characters Windows forbids, control characters,
+  // reserved device names, surrounding whitespace, and a trailing dot
+  // (invalid on Windows).
+  // eslint-disable-next-line no-control-regex
+  const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
   const reserved = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
-  
-  if (value.length === 0 || value.length > 255 || invalidChars.test(value) || reserved.test(value) || value.trim() !== value) {
+
+  if (
+    value.length === 0 ||
+    value.length > 255 ||
+    invalidChars.test(value) ||
+    reserved.test(value) ||
+    value.trim() !== value ||
+    value.endsWith('.')
+  ) {
     return null;
   }
-  
+
   return value as ValidFileName;
 };
 
@@ -116,9 +128,30 @@ export const isSupportedLanguage = (value: unknown): value is SupportedLanguage 
   return typeof value === 'string' && ['en', 'ja'].includes(value);
 };
 
-// Type guards for File objects
-export const isImageFile = (file: File): file is File & { type: SupportedImageMimeType } => {
-  return isSupportedImageMimeType(file.type);
+// Extension-based checks shared by the folder scanner and organize validation
+const getFileExtension = (fileName: string): string => {
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex === -1 ? '' : fileName.slice(dotIndex + 1).toLowerCase();
+};
+
+export const isRawFileName = (fileName: string): boolean => {
+  return (RAW_EXTENSIONS as readonly string[]).includes(getFileExtension(fileName));
+};
+
+export const isSupportedImageFileName = (fileName: string): boolean => {
+  const extension = getFileExtension(fileName);
+  return (
+    (STANDARD_IMAGE_EXTENSIONS as readonly string[]).includes(extension) ||
+    (RAW_EXTENSIONS as readonly string[]).includes(extension)
+  );
+};
+
+// Type guards for File objects.
+// Browsers report an empty MIME type for RAW files and vendor types the
+// whitelist doesn't cover (e.g. image/heic), so accept by extension too —
+// the same rule the folder scanner uses.
+export const isImageFile = (file: File): boolean => {
+  return isSupportedImageMimeType(file.type) || isSupportedImageFileName(file.name);
 };
 
 export const isValidImageSize = (file: File, maxSizeBytes: number = 50 * 1024 * 1024): boolean => {
@@ -358,6 +391,6 @@ export const narrowToFolders = (items: unknown[]): Folder[] => {
   return items.filter(isFolder);
 };
 
-export const narrowToImageFiles = (files: File[]): Array<File & { type: SupportedImageMimeType }> => {
+export const narrowToImageFiles = (files: File[]): File[] => {
   return files.filter(isImageFile);
 };

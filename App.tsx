@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import FolderOrganizer from './components/FolderOrganizer';
-import { PhotoIcon, BookOpenIcon, DocumentTextIcon } from './components/Icons';
+import { BookOpenIcon, DocumentTextIcon } from './components/Icons';
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import PrivacyModal from './components/PrivacyModal';

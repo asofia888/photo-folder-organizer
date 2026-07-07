@@ -1,9 +1,10 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Folder, Photo } from '../types';
+import { Folder, SkippedFile } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import MemoryManager from '../utils/memoryManager';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
+import { isSupportedImageFileName } from '../utils/typeGuards';
 
 type ProcessorStatus = 'idle' | 'processing' | 'done' | 'error';
 export type DateLogic = 'earliest' | 'latest';
@@ -24,6 +25,7 @@ export const useFolderProcessor = () => {
     const { t } = useLanguage();
     const [status, setStatus] = useState<ProcessorStatus>('idle');
     const [folders, setFolders] = useState<Folder[]>([]);
+    const [skippedFiles, setSkippedFiles] = useState<SkippedFile[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [processingMessage, setProcessingMessage] = useState('');
     const [rootFolderName, setRootFolderName] = useState('');
@@ -69,9 +71,11 @@ export const useFolderProcessor = () => {
                     break;
                 case 'progress':
                     setProgress(payload);
-                    const folderProgress = `${payload.processedFolders}/${payload.totalFolders}`;
-                    const fileProgress = `${payload.processedFiles}/${payload.totalFiles}`;
-                    setProcessingMessage(`Processing folder ${folderProgress} (${fileProgress} files) - ${payload.currentFolderName}`);
+                    setProcessingMessage(t('processingFolderMessage', {
+                        folderProgress: `${payload.processedFolders}/${payload.totalFolders}`,
+                        fileProgress: `${payload.processedFiles}/${payload.totalFiles}`,
+                        folderName: payload.currentFolderName
+                    }));
                     break;
                 case 'file-progress':
                     // Update file-level progress without changing folder message
@@ -80,14 +84,16 @@ export const useFolderProcessor = () => {
                         processedFiles: payload.processedFiles
                     } : null);
                     break;
-                case 'done':
+                case 'done': {
+                    // Older messages (and test mocks) may omit skippedFiles.
+                    setSkippedFiles(event.data.skippedFiles ?? []);
                     if (payload.length === 0) {
                         setError(t('errorNoImages'));
                         setStatus('error');
                         return;
                     }
 
-                    setProcessingMessage('Creating thumbnails...');
+                    setProcessingMessage(t('creatingThumbnails'));
                     setProgress(prev => prev ? { ...prev, phase: 'rendering' } : null);
                     
                     // Don't create object URLs immediately - do it lazily when needed
@@ -109,7 +115,8 @@ export const useFolderProcessor = () => {
                     setStatus('done');
                     setProgress(null);
                     break;
-                case 'error':
+                }
+                case 'error': {
                     const appError = handleError(error || 'Worker error', ErrorType.WORKER_ERROR, ErrorSeverity.HIGH, {
                         workerError: true
                     });
@@ -117,6 +124,7 @@ export const useFolderProcessor = () => {
                     setStatus('error');
                     setProgress(null);
                     break;
+                }
             }
         };
 
@@ -137,12 +145,13 @@ export const useFolderProcessor = () => {
         setProcessingMessage(t('scanningFolder', { folderName: directoryEntry.name }));
         setProgress(null);
         setFolders([]);
+        setSkippedFiles([]);
 
         let folderFileGroups: { originalName: string; id: string; files: File[] }[] = [];
 
         try {
             const readAllEntries = async (dirReader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> => {
-                let allEntries: FileSystemEntry[] = [];
+                const allEntries: FileSystemEntry[] = [];
                 let currentEntries: FileSystemEntry[];
                 do {
                     currentEntries = await readEntries(dirReader);
@@ -164,15 +173,14 @@ export const useFolderProcessor = () => {
                 throw error;
             }
             
-            setProcessingMessage('Gathering files to process...');
+            setProcessingMessage(t('gatheringFiles'));
             
             const folderFileGroupsPromises = subDirectories.map(async (subDir) => {
                 const subDirReader = subDir.createReader();
                 const photoEntriesRaw = await readAllEntries(subDirReader);
 
-                const photoEntries = photoEntriesRaw.filter(entry => 
-                    entry.isFile && 
-                    entry.name.match(/\.(jpg|jpeg|png|heic|webp|gif|bmp|tiff|cr2|cr3|nef|nrw|arw|srf|sr2|dng|raf|orf|rw2|pef|srw|x3f|kdc|dcr|mrw|3fr|fff|iiq|rwl)$/i)
+                const photoEntries = photoEntriesRaw.filter(entry =>
+                    entry.isFile && isSupportedImageFileName(entry.name)
                 ) as FileSystemFileEntry[];
                 if (photoEntries.length === 0) return null;
 
@@ -210,10 +218,77 @@ export const useFolderProcessor = () => {
         }
     }, [t, cleanup]);
     
+    // Fallback ingestion for <input webkitdirectory>. The picker returns a flat
+    // FileList where webkitRelativePath is "root/subfolder/file.ext"; mirror the
+    // drag & drop scan by grouping images by their immediate subfolder (one
+    // level deep — files directly in the root or nested deeper are ignored).
+    const processFileList = useCallback((files: File[], dateLogic: DateLogic) => {
+        cleanup();
+        setStatus('processing');
+        setError(null);
+        setProgress(null);
+        setFolders([]);
+        setSkippedFiles([]);
+
+        try {
+            const rootName = files[0]?.webkitRelativePath.split('/')[0] ?? '';
+            setRootFolderName(rootName);
+            setProcessingMessage(t('scanningFolder', { folderName: rootName }));
+
+            let hasSubFolders = false;
+            const groups = new Map<string, File[]>();
+            for (const file of files) {
+                const segments = file.webkitRelativePath.split('/');
+                if (segments.length >= 3) hasSubFolders = true;
+                if (segments.length !== 3 || !isSupportedImageFileName(file.name)) continue;
+                const subFolderName = segments[1];
+                const group = groups.get(subFolderName);
+                if (group) {
+                    group.push(file);
+                } else {
+                    groups.set(subFolderName, [file]);
+                }
+            }
+
+            if (!hasSubFolders) {
+                const error = new Error(t('errorNoSubFolders'));
+                handleError(error, ErrorType.DIRECTORY_NOT_FOUND, ErrorSeverity.MEDIUM, {
+                    directoryName: rootName,
+                    filesFound: files.length
+                });
+                throw error;
+            }
+
+            if (groups.size === 0) {
+                const error = new Error(t('errorNoImages'));
+                handleError(error, ErrorType.INVALID_FILE_FORMAT, ErrorSeverity.MEDIUM, {
+                    directoryName: rootName,
+                    filesFound: files.length
+                });
+                throw error;
+            }
+
+            const folderFileGroups = Array.from(groups, ([name, groupFiles]) => ({
+                originalName: name,
+                id: `/${rootName}/${name}`,
+                files: groupFiles,
+            }));
+
+            workerRef.current?.postMessage({ folderFileGroups, dateLogic });
+        } catch (e: any) {
+            const appError = handleError(e, ErrorType.PROCESSING_FAILED, ErrorSeverity.HIGH, {
+                operation: 'processFileList'
+            });
+            setError(appError.userMessage);
+            setStatus('error');
+        }
+    }, [t, cleanup]);
+
     const reset = useCallback(() => {
         cleanup();
         setStatus('idle');
         setFolders([]);
+        setSkippedFiles([]);
         setError(null);
         setProcessingMessage('');
         setRootFolderName('');
@@ -229,11 +304,13 @@ export const useFolderProcessor = () => {
         status,
         folders,
         setFolders,
+        skippedFiles,
         error,
         processingMessage,
         rootFolderName,
         progress,
         processDirectory,
+        processFileList,
         reset,
         cleanup,
         setFailure,

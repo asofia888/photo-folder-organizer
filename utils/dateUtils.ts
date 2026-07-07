@@ -16,11 +16,16 @@ export const formatDisplayDate = (date: Date | null): string => {
 };
 
 /**
- * Formats a date for script generation (YYYY-MM-DD)
+ * Formats a date for script generation (YYYY-MM-DD).
+ * Uses local date parts — toISOString() would convert to UTC and shift
+ * photos taken before 09:00 JST to the previous day.
  */
 export const formatScriptDate = (date: Date | null): string => {
   if (!date) return 'unknown';
-  return date.toISOString().split('T')[0];
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /**

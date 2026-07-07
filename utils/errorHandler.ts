@@ -4,6 +4,7 @@
 
 import { analytics } from './analytics';
 import MemoryManager from './memoryManager';
+import { translate, TranslationKey } from '../i18n';
 
 export enum ErrorType {
   // File System Errors
@@ -149,7 +150,7 @@ class ErrorHandler {
       type: options.type,
       severity: options.severity,
       message: originalError instanceof Error ? originalError.message : String(originalError),
-      userMessage: this.getUserFriendlyMessage(options.type, originalError),
+      userMessage: this.getUserFriendlyMessage(options.type),
       timestamp: new Date(),
       context: options.context,
       originalError: originalError instanceof Error ? originalError : undefined,
@@ -218,29 +219,30 @@ class ErrorHandler {
     }
   }
 
-  private getUserFriendlyMessage(type: ErrorType, originalError: Error | string): string {
-    const errorMap: Record<ErrorType, string> = {
-      [ErrorType.FILE_ACCESS_DENIED]: 'Unable to access file. Please check permissions.',
-      [ErrorType.FILE_NOT_FOUND]: 'File not found. It may have been moved or deleted.',
-      [ErrorType.FILE_TOO_LARGE]: 'File is too large to process. Consider using smaller images.',
-      [ErrorType.INVALID_FILE_FORMAT]: 'Unsupported file format. Please use JPEG, PNG, or HEIC images.',
-      [ErrorType.DIRECTORY_NOT_FOUND]: 'Folder not found. Please select a valid folder.',
-      [ErrorType.PERMISSION_DENIED]: 'Permission denied. Please grant necessary permissions.',
-      [ErrorType.PROCESSING_FAILED]: 'Failed to process images. Please try again.',
-      [ErrorType.EXIF_READ_ERROR]: 'Unable to read image metadata. Image may be corrupted.',
-      [ErrorType.WORKER_ERROR]: 'Background processing failed. Restarting...',
-      [ErrorType.MEMORY_ERROR]: 'Insufficient memory. Try processing fewer files at once.',
-      [ErrorType.TIMEOUT_ERROR]: 'Operation timed out. Try with fewer files or smaller images.',
-      [ErrorType.NETWORK_ERROR]: 'Network connection failed. Please check your connection.',
-      [ErrorType.API_ERROR]: 'Service temporarily unavailable. Please try again later.',
-      [ErrorType.VALIDATION_ERROR]: 'Invalid input. Please check your data and try again.',
-      [ErrorType.USER_INPUT_ERROR]: 'Invalid input provided.',
-      [ErrorType.BROWSER_NOT_SUPPORTED]: 'Your browser is not supported. Please use Chrome, Firefox, or Safari.',
-      [ErrorType.FEATURE_NOT_SUPPORTED]: 'This feature is not available in your browser.',
-      [ErrorType.UNKNOWN_ERROR]: 'An unexpected error occurred. Please try again.'
+  private getUserFriendlyMessage(type: ErrorType): string {
+    // Message texts live in i18n (en/ja) so errors follow the UI language.
+    const errorKeyMap: Record<ErrorType, TranslationKey> = {
+      [ErrorType.FILE_ACCESS_DENIED]: 'errorFileAccessDenied',
+      [ErrorType.FILE_NOT_FOUND]: 'errorFileNotFound',
+      [ErrorType.FILE_TOO_LARGE]: 'errorFileTooLarge',
+      [ErrorType.INVALID_FILE_FORMAT]: 'errorInvalidFileFormat',
+      [ErrorType.DIRECTORY_NOT_FOUND]: 'errorDirectoryNotFound',
+      [ErrorType.PERMISSION_DENIED]: 'errorPermissionDenied',
+      [ErrorType.PROCESSING_FAILED]: 'errorProcessingFailed',
+      [ErrorType.EXIF_READ_ERROR]: 'errorExifReadError',
+      [ErrorType.WORKER_ERROR]: 'errorWorkerError',
+      [ErrorType.MEMORY_ERROR]: 'errorMemoryError',
+      [ErrorType.TIMEOUT_ERROR]: 'errorTimeoutError',
+      [ErrorType.NETWORK_ERROR]: 'errorNetworkError',
+      [ErrorType.API_ERROR]: 'errorApiError',
+      [ErrorType.VALIDATION_ERROR]: 'errorValidationError',
+      [ErrorType.USER_INPUT_ERROR]: 'errorUserInputError',
+      [ErrorType.BROWSER_NOT_SUPPORTED]: 'errorBrowserNotSupported',
+      [ErrorType.FEATURE_NOT_SUPPORTED]: 'errorFeatureNotSupported',
+      [ErrorType.UNKNOWN_ERROR]: 'errorUnknownError'
     };
 
-    return errorMap[type] || 'An unknown error occurred.';
+    return translate(errorKeyMap[type] ?? 'errorUnknownError');
   }
 
   private canRetryError(type: ErrorType): boolean {
