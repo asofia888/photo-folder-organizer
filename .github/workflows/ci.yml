@@ -27,6 +27,11 @@ jobs:
       - name: Type check
         run: npm run type-check
 
+      # Lint gates on errors; no-explicit-any is reported as warnings while
+      # legacy `any`s are burned down, so warnings do not fail the build.
+      - name: Lint
+        run: npm run lint
+
       # All test files pass. (Locally the full run can hit a JS-heap limit on
       # very memory-constrained machines; the worker heap is raised in
       # vitest.config.ts and CI runners have ample memory.)
