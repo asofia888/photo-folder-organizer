@@ -1,7 +1,8 @@
 
-import React, { useEffect, useRef, ReactNode } from 'react';
+import React, { useId, useRef, ReactNode } from 'react';
 import { XMarkIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -14,24 +15,9 @@ interface BaseModalProps {
 
 const BaseModal: React.FC<BaseModalProps> = ({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-2xl' }) => {
     const modalRef = useRef<HTMLDivElement>(null);
+    const titleId = useId();
     const { t } = useLanguage();
-
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                onClose();
-            }
-        };
-
-        if (isOpen) {
-            document.addEventListener('keydown', handleKeyDown);
-            modalRef.current?.focus();
-        }
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [isOpen, onClose]);
+    useModalFocus(isOpen, modalRef, onClose);
 
     if (!isOpen) return null;
 
@@ -39,17 +25,18 @@ const BaseModal: React.FC<BaseModalProps> = ({ isOpen, onClose, title, children,
         <div
             className="fixed inset-0 bg-black/80 z-50 flex justify-center items-center p-4 transition-opacity duration-300 animate-fade-in"
             onClick={onClose}
-            aria-modal="true"
-            role="dialog"
         >
             <div
                 ref={modalRef}
-                className={`bg-slate-800 rounded-xl shadow-2xl w-full ${maxWidth} max-h-[90vh] flex flex-col animate-scale-in border border-slate-700`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                className={`bg-slate-800 rounded-xl shadow-2xl w-full ${maxWidth} max-h-[90vh] flex flex-col animate-scale-in border border-slate-700 focus:outline-none`}
                 onClick={e => e.stopPropagation()}
                 tabIndex={-1}
             >
                 <div className="flex justify-between items-center p-5 border-b border-slate-700 flex-shrink-0">
-                    <div className="text-xl font-bold text-slate-100">{title}</div>
+                    <h2 id={titleId} className="text-xl font-bold text-slate-100">{title}</h2>
                     <button
                         onClick={onClose}
                         className="p-1 rounded-full text-slate-400 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-sky-500"

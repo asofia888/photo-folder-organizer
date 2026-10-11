@@ -1,5 +1,5 @@
 
-import React, { createContext, useState, useContext, ReactNode, useCallback } from 'react';
+import React, { createContext, useState, useContext, ReactNode, useCallback, useEffect, useMemo } from 'react';
 import { translations, getInitialLocale, setCurrentLocale, Locale } from '../i18n';
 
 type LanguageContextType = {
@@ -11,7 +11,12 @@ type LanguageContextType = {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [locale, setLocaleState] = useState<Locale>(getInitialLocale());
+  const [locale, setLocaleState] = useState<Locale>(getInitialLocale);
+
+  // Screen readers and font selection follow the page language.
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const setLocale = useCallback((newLocale: Locale) => {
     // Keep non-React consumers (errorHandler user messages) in sync.
@@ -29,8 +34,10 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
     return translation;
   }, [locale]);
 
+  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
+
   return (
-    <LanguageContext.Provider value={{ locale, setLocale, t }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );

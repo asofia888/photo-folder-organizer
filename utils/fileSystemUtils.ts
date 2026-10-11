@@ -1,403 +1,207 @@
-// File System Access API utilities for folder operations
+// "Organize to computer" via the File System Access API: for every named
+// folder, creates a folder under a directory the user picks and copies the
+// photos into it. Originals are never modified and existing files in the
+// destination are never overwritten.
 
+import type { Result } from '../types';
 import {
-  ValidFolderName,
-  Result,
-  AsyncResult
-} from '../types';
-import {
-  createValidFolderName,
   createValidFileName,
+  createValidFolderName,
   createSuccessResult,
-  createErrorResult,
-  isImageFile
+  createErrorResult
 } from './typeGuards';
 
-// Progress information emitted while organizing files to disk.
+export interface OrganizeSummary {
+  // Copied under their own name.
+  copied: number;
+  // Skipped: a file with the same name and size was already there (for
+  // example from an earlier run into the same destination).
+  alreadyPresent: number;
+  // Copied with a " (2)" style suffix because a different file had the name.
+  renamed: number;
+}
+
 export interface ProcessingProgress {
   current: number;
   total: number;
-  status: 'preparing' | 'creating' | 'moving' | 'completed' | 'error';
+  status: 'preparing' | 'copying' | 'completed' | 'cancelled' | 'error';
   currentFile?: string;
   error?: string;
+  summary?: OrganizeSummary;
 }
 
 export type ProgressCallback = (progress: ProcessingProgress) => void;
 
-// Strictly typed folder organization structure
 export interface OrganizationFolder {
-  readonly name: ValidFolderName;
+  readonly name: string;
   readonly photos: readonly File[];
 }
 
-// File system operation results
-export type FileSystemResult<T> = AsyncResult<T, FileSystemError>;
+export type FileSystemErrorCode = 'CANCELLED' | 'PERMISSION_DENIED' | 'INVALID_NAME' | 'WRITE_FAILED';
 
-// Custom error types for file system operations
 export class FileSystemError extends Error {
   constructor(
     message: string,
-    public readonly code: 'NOT_SUPPORTED' | 'PERMISSION_DENIED' | 'INVALID_NAME' | 'CREATE_FAILED' | 'COPY_FAILED' | 'VALIDATION_FAILED',
-    public readonly details?: string
+    public readonly code: FileSystemErrorCode,
+    // The folder or "folder/file" the error is about, for the user message.
+    public readonly target?: string,
+    // What had been done before the operation stopped.
+    public readonly summary?: OrganizeSummary
   ) {
     super(message);
     this.name = 'FileSystemError';
   }
 }
 
-// Check if File System Access API is supported
+type DirectoryPickerWindow = Window & {
+  showDirectoryPicker(options?: { mode?: 'read' | 'readwrite' }): Promise<FileSystemDirectoryHandle>;
+};
+
 export const isFileSystemAccessSupported = (): boolean => {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 };
 
-// Type-safe validation of folder organization input
-export const validateOrganizationFolders = (
-  folders: unknown[]
-): Result<OrganizationFolder[], FileSystemError> => {
-  const validatedFolders: OrganizationFolder[] = [];
-  
-  for (let i = 0; i < folders.length; i++) {
-    const folder = folders[i];
-    
-    if (!folder || typeof folder !== 'object') {
-      return createErrorResult(
-        new FileSystemError(
-          `Invalid folder at index ${i}`,
-          'VALIDATION_FAILED',
-          'Expected object with name and photos properties'
-        )
-      );
-    }
-    
-    const obj = folder as Record<string, unknown>;
-    
-    // Validate folder name
-    if (typeof obj.name !== 'string') {
-      return createErrorResult(
-        new FileSystemError(
-          `Invalid folder name at index ${i}`,
-          'VALIDATION_FAILED',
-          'Expected string folder name'
-        )
-      );
-    }
-    
-    const validFolderName = createValidFolderName(obj.name);
-    if (!validFolderName) {
-      return createErrorResult(
-        new FileSystemError(
-          `Invalid folder name "${obj.name}" at index ${i}`,
-          'INVALID_NAME',
-          'Folder name contains invalid characters or is reserved'
-        )
-      );
-    }
-    
-    // Validate photos array
-    if (!Array.isArray(obj.photos)) {
-      return createErrorResult(
-        new FileSystemError(
-          `Invalid photos array at index ${i}`,
-          'VALIDATION_FAILED',
-          'Expected array of File objects'
-        )
-      );
-    }
-    
-    const photos: File[] = [];
-    for (let j = 0; j < obj.photos.length; j++) {
-      const photo = obj.photos[j];
-      if (!(photo instanceof File)) {
-        return createErrorResult(
-          new FileSystemError(
-            `Invalid photo at folder ${i}, photo ${j}`,
-            'VALIDATION_FAILED',
-            'Expected File object'
-          )
-        );
-      }
-      
-      if (!isImageFile(photo)) {
-        return createErrorResult(
-          new FileSystemError(
-            `Unsupported file type "${photo.type}" for ${photo.name}`,
-            'VALIDATION_FAILED',
-            'Only supported image types are allowed'
-          )
-        );
-      }
-      
-      photos.push(photo);
-    }
-    
-    validatedFolders.push({
-      name: validFolderName,
-      photos: Object.freeze(photos)
-    });
-  }
-  
-  return createSuccessResult(validatedFolders);
-};
+const hasErrorName = (error: unknown, name: string): boolean =>
+  typeof error === 'object' && error !== null && (error as { name?: unknown }).name === name;
 
-// Create a new folder in the target directory with type safety
-export const createFolder = async (
-  directoryHandle: FileSystemDirectoryHandle,
-  folderName: ValidFolderName
-): FileSystemResult<FileSystemDirectoryHandle> => {
+/** Asks the user for the destination. Returns null if they close the picker. */
+export const pickTargetDirectory = async (): Promise<FileSystemDirectoryHandle | null> => {
   try {
-    const folderHandle = await directoryHandle.getDirectoryHandle(folderName, {
-      create: true
-    });
-    return createSuccessResult(folderHandle);
+    return await (window as unknown as DirectoryPickerWindow).showDirectoryPicker({ mode: 'readwrite' });
   } catch (error) {
-    return createErrorResult(
-      new FileSystemError(
-        `Failed to create folder "${folderName}"`,
-        'CREATE_FAILED',
-        error instanceof Error ? error.message : String(error)
-      )
-    );
+    if (hasErrorName(error, 'AbortError')) return null;
+    throw error;
   }
 };
 
-// Copy a file to a new location with type safety
+export const toFileSystemError = (
+  error: unknown,
+  target?: string,
+  summary?: OrganizeSummary
+): FileSystemError => {
+  const permissionDenied = hasErrorName(error, 'NotAllowedError') || hasErrorName(error, 'SecurityError');
+  return new FileSystemError(
+    error instanceof Error ? error.message : String(error),
+    permissionDenied ? 'PERMISSION_DENIED' : 'WRITE_FAILED',
+    target,
+    summary
+  );
+};
+
+// What already exists under `name`: its File, 'directory', or null if free.
+const lookupEntry = async (
+  directory: FileSystemDirectoryHandle,
+  name: string
+): Promise<File | 'directory' | null> => {
+  try {
+    const handle = await directory.getFileHandle(name);
+    return await handle.getFile();
+  } catch (error) {
+    if (hasErrorName(error, 'NotFoundError')) return null;
+    if (hasErrorName(error, 'TypeMismatchError')) return 'directory';
+    throw error;
+  }
+};
+
+const splitExtension = (name: string): [string, string] => {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+};
+
+// "IMG_0001.jpg" -> "IMG_0001 (2).jpg", "IMG_0001 (3).jpg", ...
+const findFreeName = async (directory: FileSystemDirectoryHandle, name: string): Promise<string> => {
+  const [base, extension] = splitExtension(name);
+  for (let n = 2; n < 10000; n++) {
+    const candidate = `${base} (${n})${extension}`;
+    if ((await lookupEntry(directory, candidate)) === null) return candidate;
+  }
+  throw new Error(`No free file name for "${name}"`);
+};
+
 const copyFile = async (
-  sourceFile: File,
-  targetHandle: FileSystemFileHandle
-): FileSystemResult<void> => {
+  directory: FileSystemDirectoryHandle,
+  file: File
+): Promise<keyof OrganizeSummary> => {
+  const existing = await lookupEntry(directory, file.name);
+  if (existing instanceof File && existing.size === file.size) {
+    return 'alreadyPresent';
+  }
+
+  const targetName = existing === null ? file.name : await findFreeName(directory, file.name);
+  const handle = await directory.getFileHandle(targetName, { create: true });
   try {
-    const writable = await targetHandle.createWritable();
-    await writable.write(sourceFile);
-    await writable.close();
-    return createSuccessResult(undefined);
-  } catch (error) {
-    return createErrorResult(
-      new FileSystemError(
-        `Failed to copy file "${sourceFile.name}"`,
-        'COPY_FAILED',
-        error instanceof Error ? error.message : String(error)
-      )
-    );
-  }
-};
-
-// Type-safe file validation
-const validateImageFiles = (files: File[]): Result<File[], FileSystemError> => {
-  const validFiles: File[] = [];
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    if (!isImageFile(file)) {
-      return createErrorResult(
-        new FileSystemError(
-          `Unsupported file type "${file.type}" for ${file.name}`,
-          'VALIDATION_FAILED',
-          'Only supported image types are allowed'
-        )
-      );
-    }
-    validFiles.push(file);
-  }
-
-  return createSuccessResult(validFiles);
-};
-
-// Move files to target folder with comprehensive type safety
-export const moveFilesToFolder = async (
-  files: File[],
-  targetDirectoryHandle: FileSystemDirectoryHandle,
-  onProgress?: ProgressCallback
-): FileSystemResult<void> => {
-  // Validate input files
-  const validationResult = validateImageFiles(files);
-  if (!validationResult.success) {
-    return validationResult;
-  }
-  
-  const validFiles = validationResult.data;
-  const total = validFiles.length;
-  let completed = 0;
-
-  onProgress?.({
-    current: 0,
-    total,
-    status: 'preparing'
-  });
-
-  for (const file of validFiles) {
+    const writable = await handle.createWritable();
     try {
-      onProgress?.({
-        current: completed,
-        total,
-        status: 'moving',
-        currentFile: file.name
-      });
-
-      // Validate file name
-      const validFileName = createValidFileName(file.name);
-      if (!validFileName) {
-        return createErrorResult(
-          new FileSystemError(
-            `Invalid file name "${file.name}"`,
-            'INVALID_NAME',
-            'File name contains invalid characters'
-          )
-        );
-      }
-
-      // Create file handle in target directory
-      const fileHandle = await targetDirectoryHandle.getFileHandle(validFileName, {
-        create: true
-      });
-
-      // Copy file content
-      const copyResult = await copyFile(file, fileHandle);
-      if (!copyResult.success) {
-        return copyResult;
-      }
-      
-      completed++;
-      
-      onProgress?.({
-        current: completed,
-        total,
-        status: completed === total ? 'completed' : 'moving'
-      });
+      await writable.write(file);
+      await writable.close();
     } catch (error) {
-      const errorMessage = `Failed to move ${file.name}: ${error}`;
-      
-      onProgress?.({
-        current: completed,
-        total,
-        status: 'error',
-        currentFile: file.name,
-        error: errorMessage
-      });
-      
-      return createErrorResult(
-        new FileSystemError(
-          errorMessage,
-          'COPY_FAILED',
-          error instanceof Error ? error.message : String(error)
-        )
-      );
+      await writable.abort().catch(() => undefined);
+      throw error;
     }
-  }
-  
-  return createSuccessResult(undefined);
-};
-
-// Main function to create folder structure and organize photos with complete type safety
-export const organizePhotosToFolders = async (
-  folders: unknown[],
-  onProgress?: ProgressCallback
-): FileSystemResult<void> => {
-  // Check API support
-  if (!isFileSystemAccessSupported()) {
-    return createErrorResult(
-      new FileSystemError(
-        'File System Access API is not supported in this browser',
-        'NOT_SUPPORTED'
-      )
-    );
-  }
-
-  // Validate input folders
-  const validationResult = validateOrganizationFolders(folders);
-  if (!validationResult.success) {
-    return validationResult;
-  }
-
-  const validatedFolders = validationResult.data;
-
-  try {
-    // Let user select target directory
-    const targetDirHandle = await (window as any).showDirectoryPicker({
-      mode: 'readwrite'
-    });
-
-    const totalFiles = validatedFolders.reduce((sum, folder) => sum + folder.photos.length, 0);
-    let processedFiles = 0;
-
-    onProgress?.({
-      current: 0,
-      total: totalFiles,
-      status: 'preparing'
-    });
-
-    // Process each folder
-    for (const folder of validatedFolders) {
-      onProgress?.({
-        current: processedFiles,
-        total: totalFiles,
-        status: 'creating',
-        currentFile: `Creating folder: ${folder.name}`
-      });
-
-      // Create folder
-      const folderResult = await createFolder(targetDirHandle, folder.name);
-      if (!folderResult.success) {
-        return folderResult;
-      }
-
-      const folderHandle = folderResult.data;
-
-      // Move files to folder
-      const moveResult = await moveFilesToFolder(
-        Array.from(folder.photos), // Convert readonly array to regular array
-        folderHandle,
-        (progress) => {
-          onProgress?.({
-            current: processedFiles + progress.current,
-            total: totalFiles,
-            status: progress.status,
-            currentFile: progress.currentFile
-          });
-        }
-      );
-
-      if (!moveResult.success) {
-        return moveResult;
-      }
-
-      processedFiles += folder.photos.length;
-    }
-
-    onProgress?.({
-      current: totalFiles,
-      total: totalFiles,
-      status: 'completed'
-    });
-
-    return createSuccessResult(undefined);
-
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return createErrorResult(
-        new FileSystemError(
-          '操作がキャンセルされました',
-          'PERMISSION_DENIED',
-          'User cancelled the operation'
-        )
-      );
-    }
-    
-    return createErrorResult(
-      new FileSystemError(
-        'フォルダの作成中にエラーが発生しました',
-        'CREATE_FAILED',
-        error instanceof Error ? error.message : String(error)
-      )
-    );
+    // getFileHandle({ create: true }) already created an empty file.
+    await directory.removeEntry(targetName).catch(() => undefined);
+    throw error;
   }
+
+  return targetName === file.name ? 'copied' : 'renamed';
 };
 
-// Type-safe folder name validation that returns a branded type
-export const validateFolderName = (name: string): ValidFolderName | null => {
-  return createValidFolderName(name);
-};
+/**
+ * Copies each folder's photos into `targetDirectory/<folder name>/`. Stops at
+ * the first failure, or before the next file once `signal` is aborted; the
+ * error then carries a summary of what was copied so far.
+ */
+export const organizePhotosToFolders = async (
+  targetDirectory: FileSystemDirectoryHandle,
+  folders: readonly OrganizationFolder[],
+  onProgress?: ProgressCallback,
+  signal?: AbortSignal
+): Promise<Result<OrganizeSummary, FileSystemError>> => {
+  // Validate every name before writing anything.
+  for (const folder of folders) {
+    if (!createValidFolderName(folder.name)) {
+      return createErrorResult(new FileSystemError(`Invalid folder name "${folder.name}"`, 'INVALID_NAME', folder.name));
+    }
+    for (const photo of folder.photos) {
+      if (!createValidFileName(photo.name)) {
+        return createErrorResult(new FileSystemError(`Invalid file name "${photo.name}"`, 'INVALID_NAME', photo.name));
+      }
+    }
+  }
 
-// Legacy boolean validation for backward compatibility
-export const isValidFolderNameBoolean = (name: string): boolean => {
-  return createValidFolderName(name) !== null;
+  const total = folders.reduce((sum, folder) => sum + folder.photos.length, 0);
+  const summary: OrganizeSummary = { copied: 0, alreadyPresent: 0, renamed: 0 };
+  let current = 0;
+
+  onProgress?.({ current, total, status: 'preparing' });
+
+  for (const folder of folders) {
+    let folderHandle: FileSystemDirectoryHandle;
+    try {
+      // Reuses an existing folder of that name; copyFile never overwrites.
+      folderHandle = await targetDirectory.getDirectoryHandle(folder.name, { create: true });
+    } catch (error) {
+      return createErrorResult(toFileSystemError(error, folder.name, { ...summary }));
+    }
+
+    for (const photo of folder.photos) {
+      if (signal?.aborted) {
+        return createErrorResult(new FileSystemError('Cancelled by the user', 'CANCELLED', undefined, { ...summary }));
+      }
+
+      const target = `${folder.name}/${photo.name}`;
+      onProgress?.({ current, total, status: 'copying', currentFile: target });
+
+      try {
+        summary[await copyFile(folderHandle, photo)]++;
+      } catch (error) {
+        return createErrorResult(toFileSystemError(error, target, { ...summary }));
+      }
+      current++;
+    }
+  }
+
+  onProgress?.({ current: total, total, status: 'completed', summary: { ...summary } });
+  return createSuccessResult({ ...summary });
 };

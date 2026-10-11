@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Photo } from '../types';
 import { XMarkIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
+import { usePhotoSource } from '../hooks/usePhotoSource';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface ImageModalProps {
   photo: Photo | null;
@@ -21,17 +23,19 @@ const ImageModal: React.FC<ImageModalProps> = ({
   onNext
 }) => {
   const { t } = useLanguage();
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  // Falls back from the original file to the embedded preview when the
+  // browser can't decode the file (RAW, HEIC outside Safari).
+  const { src: imageSrc, tryNextSource, exhausted } = usePhotoSource(photo, isOpen);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Escape, focus trap and focus return; arrow keys are handled below.
+  useModalFocus(isOpen, dialogRef, onClose);
 
-  // キーボードナビゲーション
+  // キーボードナビゲーション（前後の写真）
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
-        case 'Escape':
-          onClose();
-          break;
         case 'ArrowLeft':
           if (onPrevious) {
             e.preventDefault();
@@ -49,7 +53,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, onPrevious, onNext]);
+  }, [isOpen, onPrevious, onNext]);
 
   // スクロールを防止
   useEffect(() => {
@@ -64,35 +68,6 @@ const ImageModal: React.FC<ImageModalProps> = ({
     };
   }, [isOpen]);
 
-  // 表示用の画像URLを解決する。サムネイルは遅延生成のため photo.url は通常 null。
-  // RAW は抽出済みサムネイルJPEGを使い、通常画像は File から ObjectURL を生成して
-  // 写真の切り替え・モーダルを閉じる際に解放する（リーク防止）。
-  useEffect(() => {
-    if (!isOpen || !photo) {
-      setImageSrc(null);
-      return;
-    }
-
-    if (photo.isRaw) {
-      setImageSrc(photo.thumbnailUrl ?? null);
-      return;
-    }
-
-    if (photo.url) {
-      setImageSrc(photo.url);
-      return;
-    }
-
-    if (photo.file) {
-      const objectUrl = URL.createObjectURL(photo.file);
-      setImageSrc(objectUrl);
-      return () => URL.revokeObjectURL(objectUrl);
-    }
-
-    setImageSrc(null);
-    return;
-  }, [isOpen, photo]);
-
   if (!isOpen || !photo) return null;
 
   const currentIndex = photos.findIndex(p => p.id === photo.id);
@@ -101,19 +76,31 @@ const ImageModal: React.FC<ImageModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-fade-in">
       {/* 背景クリックで閉じる */}
-      <div 
-        className="absolute inset-0 cursor-pointer" 
+      <div
+        className="absolute inset-0 cursor-pointer"
         onClick={onClose}
-        aria-label="Close modal"
+        aria-hidden="true"
       />
-      
+
       {/* モーダルコンテンツ */}
-      <div className="relative max-w-7xl max-h-screen p-4 w-full h-full flex items-center justify-center">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={photo.file?.name ?? t('photoThumbnailAlt')}
+        tabIndex={-1}
+        // This layer covers the backdrop, so empty space around the photo
+        // closes the viewer here.
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+        className="relative max-w-7xl max-h-screen p-4 w-full h-full flex items-center justify-center focus:outline-none"
+      >
         {/* 閉じるボタン */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
-          aria-label="Close image"
+          aria-label={t('close')}
         >
           <XMarkIcon className="h-6 w-6" />
         </button>
@@ -126,7 +113,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onPrevious();
             }}
             className="absolute left-4 z-10 p-3 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
-            aria-label="Previous image"
+            aria-label={t('previousPhoto')}
           >
             <ChevronLeftIcon className="h-8 w-8" />
           </button>
@@ -140,7 +127,7 @@ const ImageModal: React.FC<ImageModalProps> = ({
               onNext();
             }}
             className="absolute right-4 z-10 p-3 bg-black/50 text-white rounded-full hover:bg-black/70 transition-colors"
-            aria-label="Next image"
+            aria-label={t('nextPhoto')}
           >
             <ChevronRightIcon className="h-8 w-8" />
           </button>
@@ -150,11 +137,12 @@ const ImageModal: React.FC<ImageModalProps> = ({
         {imageSrc ? (
           <img
             src={imageSrc}
-            alt={`Photo ${currentIndex + 1} of ${photos.length}`}
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl cursor-pointer"
+            alt={photo.file?.name ?? ''}
+            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
             onClick={(e) => e.stopPropagation()}
+            onError={tryNextSource}
           />
-        ) : (
+        ) : exhausted && (
           <div
             className="flex items-center justify-center text-slate-400 bg-slate-800/80 rounded-lg p-12 text-sm"
             onClick={(e) => e.stopPropagation()}

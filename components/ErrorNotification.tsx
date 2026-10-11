@@ -1,73 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { AppError, ErrorSeverity, errorHandler, attemptRecovery } from '../utils/errorHandler';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { AppError, ErrorSeverity, errorHandler } from '../utils/errorHandler';
 import { useLanguage } from '../contexts/LanguageContext';
-import { ExclamationTriangleIcon, XMarkIcon, ArrowPathIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
+import { ExclamationTriangleIcon, XMarkIcon, ChevronDownIcon, ChevronUpIcon } from './Icons';
 
 interface ErrorNotificationProps {
   error: AppError;
   onDismiss: () => void;
-  onRetry?: () => Promise<void>;
 }
 
-const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss, onRetry }) => {
+// Dark surface with a severity-colored accent, matching the rest of the UI.
+const SEVERITY_STYLES: Record<ErrorSeverity, { container: string; icon: string }> = {
+  [ErrorSeverity.LOW]: { container: 'border-sky-500', icon: 'text-sky-400' },
+  [ErrorSeverity.MEDIUM]: { container: 'border-amber-500', icon: 'text-amber-400' },
+  [ErrorSeverity.HIGH]: { container: 'border-orange-500', icon: 'text-orange-400' },
+  [ErrorSeverity.CRITICAL]: { container: 'border-red-500', icon: 'text-red-400' },
+};
+
+const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss }) => {
   const { t } = useLanguage();
-  const [isRecovering, setIsRecovering] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
-  const [recoveryFailed, setRecoveryFailed] = useState(false);
-
-  const handleRetry = useCallback(async () => {
-    if (isRecovering) return;
-
-    setIsRecovering(true);
-    setRecoveryFailed(false);
-
-    try {
-      // First attempt automatic recovery
-      const recovered = await attemptRecovery(error);
-      
-      if (recovered && onRetry) {
-        await onRetry();
-        onDismiss(); // Success - dismiss notification
-      } else if (onRetry) {
-        await onRetry();
-        onDismiss(); // Manual retry succeeded
-      } else {
-        setRecoveryFailed(true);
-      }
-    } catch (retryError) {
-      console.error('Retry failed:', retryError);
-      setRecoveryFailed(true);
-    } finally {
-      setIsRecovering(false);
-    }
-  }, [error, onRetry, onDismiss, isRecovering]);
-
-  const getSeverityColor = (severity: ErrorSeverity) => {
-    switch (severity) {
-      case ErrorSeverity.LOW:
-        return 'border-blue-500 bg-blue-50 text-blue-900';
-      case ErrorSeverity.MEDIUM:
-        return 'border-yellow-500 bg-yellow-50 text-yellow-900';
-      case ErrorSeverity.HIGH:
-        return 'border-orange-500 bg-orange-50 text-orange-900';
-      case ErrorSeverity.CRITICAL:
-        return 'border-red-500 bg-red-50 text-red-900';
-    }
-  };
-
-  const getSeverityIcon = (severity: ErrorSeverity) => {
-    const baseClasses = "h-5 w-5 mr-2";
-    switch (severity) {
-      case ErrorSeverity.LOW:
-        return <ExclamationTriangleIcon className={`${baseClasses} text-blue-500`} />;
-      case ErrorSeverity.MEDIUM:
-        return <ExclamationTriangleIcon className={`${baseClasses} text-yellow-500`} />;
-      case ErrorSeverity.HIGH:
-        return <ExclamationTriangleIcon className={`${baseClasses} text-orange-500`} />;
-      case ErrorSeverity.CRITICAL:
-        return <ExclamationTriangleIcon className={`${baseClasses} text-red-500`} />;
-    }
-  };
+  const styles = SEVERITY_STYLES[error.severity];
 
   const formatTimestamp = (timestamp: Date) => {
     return new Intl.DateTimeFormat('default', {
@@ -77,14 +29,14 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss,
     }).format(timestamp);
   };
 
-  const canRetry = error.canRetry && (!error.maxRetries || error.retryCount < error.maxRetries);
-  const maxRetriesExceeded = error.maxRetries && error.retryCount >= error.maxRetries;
-
   return (
-    <div className={`border-l-4 p-4 mb-4 rounded-r-md shadow-sm ${getSeverityColor(error.severity)}`}>
+    <div
+      role="alert"
+      className={`border-l-4 p-4 rounded-r-md shadow-lg bg-slate-800 text-slate-100 ring-1 ring-slate-700 ${styles.container}`}
+    >
       <div className="flex items-start">
         <div className="flex-shrink-0">
-          {getSeverityIcon(error.severity)}
+          <ExclamationTriangleIcon className={`h-5 w-5 mr-2 ${styles.icon}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
@@ -92,49 +44,15 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss,
               <h3 className="text-sm font-medium">
                 {error.userMessage}
               </h3>
-              <p className="mt-1 text-xs opacity-75">
+              <p className="mt-1 text-xs text-slate-400">
                 {formatTimestamp(error.timestamp)}
-                {error.retryCount > 0 && ` • Attempt ${error.retryCount + 1}`}
               </p>
-              
-              {maxRetriesExceeded && (
-                <p className="mt-1 text-xs text-red-600 font-medium">
-                  {t('errorMaxRetriesExceeded')}
-                </p>
-              )}
-              
-              {recoveryFailed && (
-                <p className="mt-1 text-xs text-red-600">
-                  {t('errorRecoveryFailed')}
-                </p>
-              )}
             </div>
-            
+
             <div className="flex items-center space-x-2 ml-4">
-              {canRetry && !maxRetriesExceeded && (
-                <button
-                  onClick={handleRetry}
-                  disabled={isRecovering}
-                  className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-current hover:bg-current hover:bg-opacity-10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title={t('errorRetry')}
-                >
-                  {isRecovering ? (
-                    <>
-                      <ArrowPathIcon className="h-3 w-3 mr-1 animate-spin" />
-                      {t('errorRecovering')}
-                    </>
-                  ) : (
-                    <>
-                      <ArrowPathIcon className="h-3 w-3 mr-1" />
-                      {t('errorRetry')}
-                    </>
-                  )}
-                </button>
-              )}
-              
               <button
                 onClick={() => setShowDetails(!showDetails)}
-                className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-current hover:bg-current hover:bg-opacity-10 transition-colors"
+                className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors"
                 title={showDetails ? t('errorHideDetails') : t('errorShowDetails')}
               >
                 {showDetails ? (
@@ -149,20 +67,21 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss,
                   </>
                 )}
               </button>
-              
+
               <button
                 onClick={onDismiss}
-                className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-current hover:bg-current hover:bg-opacity-10 transition-colors"
+                className="inline-flex items-center px-2 py-1 text-xs font-medium rounded border border-slate-600 text-slate-300 hover:bg-slate-700 transition-colors"
                 title={t('errorDismiss')}
+                aria-label={t('errorDismiss')}
               >
                 <XMarkIcon className="h-3 w-3" />
               </button>
             </div>
           </div>
-          
+
           {showDetails && (
-            <div className="mt-3 pt-3 border-t border-current border-opacity-20">
-              <dl className="text-xs space-y-1">
+            <div className="mt-3 pt-3 border-t border-slate-700">
+              <dl className="text-xs space-y-1 text-slate-300">
                 <div className="flex">
                   <dt className="font-medium w-16">Type:</dt>
                   <dd className="font-mono">{error.type}</dd>
@@ -179,7 +98,7 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss,
                   <div>
                     <dt className="font-medium">Context:</dt>
                     <dd className="mt-1">
-                      <pre className="text-xs bg-black bg-opacity-10 p-2 rounded overflow-x-auto">
+                      <pre className="text-xs bg-slate-900 p-2 rounded overflow-x-auto">
                         {JSON.stringify(error.context, null, 2)}
                       </pre>
                     </dd>
@@ -189,7 +108,7 @@ const ErrorNotification: React.FC<ErrorNotificationProps> = ({ error, onDismiss,
                   <div>
                     <dt className="font-medium">Technical Details:</dt>
                     <dd className="mt-1">
-                      <pre className="text-xs bg-black bg-opacity-10 p-2 rounded overflow-x-auto">
+                      <pre className="text-xs bg-slate-900 p-2 rounded overflow-x-auto">
                         {error.originalError.message}
                       </pre>
                     </dd>
@@ -209,27 +128,34 @@ interface ErrorNotificationContainerProps {
   maxNotifications?: number;
 }
 
-export const ErrorNotificationContainer: React.FC<ErrorNotificationContainerProps> = ({ 
-  maxNotifications = 3 
+const AUTO_DISMISS_MS = 5000;
+
+export const ErrorNotificationContainer: React.FC<ErrorNotificationContainerProps> = ({
+  maxNotifications = 3
 }) => {
   const [errors, setErrors] = useState<AppError[]>([]);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
+    const pending = timers.current;
     const unsubscribe = errorHandler.onError((error) => {
-      setErrors(prev => {
-        const newErrors = [error, ...prev.slice(0, maxNotifications - 1)];
-        return newErrors;
-      });
+      setErrors(prev => [error, ...prev.slice(0, maxNotifications - 1)]);
 
-      // Auto-dismiss low severity errors after 5 seconds
+      // Low severity notifications are informational; let them go away.
       if (error.severity === ErrorSeverity.LOW) {
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+          pending.delete(timer);
           setErrors(prev => prev.filter(e => e.id !== error.id));
-        }, 5000);
+        }, AUTO_DISMISS_MS);
+        pending.add(timer);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      pending.forEach(clearTimeout);
+      pending.clear();
+    };
   }, [maxNotifications]);
 
   const handleDismiss = useCallback((errorId: string) => {
@@ -241,7 +167,7 @@ export const ErrorNotificationContainer: React.FC<ErrorNotificationContainerProp
   }
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-96 space-y-2">
+    <div className="fixed top-4 right-4 left-4 sm:left-auto sm:w-96 z-50 space-y-2">
       {errors.map(error => (
         <ErrorNotification
           key={error.id}

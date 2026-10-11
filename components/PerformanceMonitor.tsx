@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import MemoryManager from '../utils/memoryManager';
+// Development aid: shows JS heap usage where the browser exposes
+// performance.memory (Chromium). Rendered only in dev builds.
+import React, { useState, useEffect } from 'react';
 
 interface PerformanceMonitorProps {
   isVisible: boolean;
@@ -13,22 +14,31 @@ interface SystemMemory {
   utilization: number;
 }
 
+const readHeapStats = (): SystemMemory | null => {
+  const memory = (performance as Performance & {
+    memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number };
+  }).memory;
+  if (!memory) return null;
+  return {
+    usedJSHeapSize: memory.usedJSHeapSize,
+    totalJSHeapSize: memory.totalJSHeapSize,
+    jsHeapSizeLimit: memory.jsHeapSizeLimit,
+    utilization: (memory.usedJSHeapSize / memory.jsHeapSizeLimit) * 100
+  };
+};
+
 const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({ isVisible, onToggle }) => {
   const [systemMemory, setSystemMemory] = useState<SystemMemory | null>(null);
-  const memoryManager = MemoryManager.getInstance();
-
-  const updateStats = useCallback(() => {
-    setSystemMemory(memoryManager.getMemoryStats().systemMemory ?? null);
-  }, [memoryManager]);
 
   useEffect(() => {
     if (!isVisible) return;
 
+    const updateStats = () => setSystemMemory(readHeapStats());
     const interval = setInterval(updateStats, 2000);
     updateStats(); // Initial update
 
     return () => clearInterval(interval);
-  }, [isVisible, updateStats]);
+  }, [isVisible]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return '0 B';
@@ -112,16 +122,6 @@ const PerformanceMonitor: React.FC<PerformanceMonitorProps> = ({ isVisible, onTo
           <div>Consider processing fewer files at once or reducing image sizes.</div>
         </div>
       )}
-
-      {/* Controls */}
-      <div className="mt-3 pt-2 border-t border-slate-700">
-        <button
-          onClick={() => memoryManager.cleanup()}
-          className="text-xs bg-slate-600 hover:bg-slate-500 px-2 py-1 rounded transition-colors"
-        >
-          Force GC
-        </button>
-      </div>
     </div>
   );
 };

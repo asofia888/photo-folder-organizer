@@ -2,18 +2,10 @@
  * Date utility functions for consistent date handling
  */
 
-/**
- * Formats a date for display in the UI
- */
-export const formatDisplayDate = (date: Date | null): string => {
-  if (!date) return 'Unknown Date';
-  
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
+import type { DateLogic } from '../types';
+
+export const isValidDate = (value: unknown): value is Date =>
+  value instanceof Date && !isNaN(value.getTime());
 
 /**
  * Formats a date for script generation (YYYY-MM-DD).
@@ -29,55 +21,23 @@ export const formatScriptDate = (date: Date | null): string => {
 };
 
 /**
- * Formats a date for JSON serialization
+ * Picks the date that represents a folder. EXIF capture dates win; only when
+ * no photo has one (screenshots, images saved from chat apps or the web) are
+ * file modification times used, and the result is flagged as estimated.
  */
-export const formatJsonDate = (date: Date | null): string | null => {
-  if (!date) return null;
-  return date.toISOString();
-};
+export const pickRepresentativeDate = (
+  photos: ReadonlyArray<{ readonly exifDate: Date | null; readonly fileDate: Date | null }>,
+  dateLogic: DateLogic
+): { date: Date | null; isEstimated: boolean } => {
+  const exifDates = photos.map(p => p.exifDate).filter(isValidDate);
+  const candidates = exifDates.length > 0 ? exifDates : photos.map(p => p.fileDate).filter(isValidDate);
+  if (candidates.length === 0) {
+    return { date: null, isEstimated: false };
+  }
 
-/**
- * Parses a date from JSON string
- */
-export const parseJsonDate = (dateString: string | null): Date | null => {
-  if (!dateString) return null;
-  const date = new Date(dateString);
-  return isNaN(date.getTime()) ? null : date;
-};
-
-/**
- * Checks if a date is valid
- */
-export const isValidDate = (date: Date | null): date is Date => {
-  return date instanceof Date && !isNaN(date.getTime());
-};
-
-/**
- * Compares two dates for sorting
- */
-export const compareDates = (a: Date | null, b: Date | null): number => {
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  return a.getTime() - b.getTime();
-};
-
-/**
- * Gets the earliest date from an array of dates
- */
-export const getEarliestDate = (dates: (Date | null)[]): Date | null => {
-  const validDates = dates.filter(isValidDate);
-  if (validDates.length === 0) return null;
-  
-  return new Date(Math.min(...validDates.map(d => d.getTime())));
-};
-
-/**
- * Gets the latest date from an array of dates
- */
-export const getLatestDate = (dates: (Date | null)[]): Date | null => {
-  const validDates = dates.filter(isValidDate);
-  if (validDates.length === 0) return null;
-  
-  return new Date(Math.max(...validDates.map(d => d.getTime())));
+  // reduce rather than Math.min(...spread): folders can hold many thousands.
+  const time = candidates
+    .map(d => d.getTime())
+    .reduce((a, b) => (dateLogic === 'earliest' ? Math.min(a, b) : Math.max(a, b)));
+  return { date: new Date(time), isEstimated: exifDates.length === 0 };
 };

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isImageFile,
   isSupportedImageFileName,
   isRawFileName,
   createValidFileName,
@@ -12,6 +11,8 @@ describe('isSupportedImageFileName', () => {
     expect(isSupportedImageFileName('a.jpg')).toBe(true)
     expect(isSupportedImageFileName('b.HEIC')).toBe(true)
     expect(isSupportedImageFileName('c.Png')).toBe(true)
+    expect(isSupportedImageFileName('d.heif')).toBe(true)
+    expect(isSupportedImageFileName('e.TIF')).toBe(true)
   })
 
   it('accepts RAW extensions', () => {
@@ -24,29 +25,6 @@ describe('isSupportedImageFileName', () => {
   it('rejects non-image files', () => {
     expect(isSupportedImageFileName('notes.txt')).toBe(false)
     expect(isSupportedImageFileName('no-extension')).toBe(false)
-  })
-})
-
-// The scanner accepts files by extension, so the organize-to-computer
-// validation must accept the same set: browsers report an empty MIME type
-// for RAW files and image/heic is absent from the MIME whitelist. When
-// isImageFile checked only MIME types, organizing folders containing RAW or
-// HEIC photos aborted with VALIDATION_FAILED.
-describe('isImageFile (organize-to-computer validation)', () => {
-  it('accepts RAW files whose browser MIME type is empty', () => {
-    expect(isImageFile(new File([''], 'photo.CR2', { type: '' }))).toBe(true)
-  })
-
-  it('accepts HEIC files', () => {
-    expect(isImageFile(new File([''], 'photo.heic', { type: 'image/heic' }))).toBe(true)
-  })
-
-  it('accepts regular images by MIME type', () => {
-    expect(isImageFile(new File([''], 'renamed.bin', { type: 'image/jpeg' }))).toBe(true)
-  })
-
-  it('rejects unsupported files', () => {
-    expect(isImageFile(new File([''], 'notes.txt', { type: 'text/plain' }))).toBe(false)
   })
 })
 
