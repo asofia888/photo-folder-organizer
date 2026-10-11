@@ -21,21 +21,19 @@ const ProgressModal: React.FC<ProgressModalProps> = ({
   if (!isOpen) return null;
 
   const progressPercentage = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+  const isFinished = progress.status === 'completed' || progress.status === 'cancelled' || progress.status === 'error';
+  const { summary } = progress;
 
-  const getStatusText = () => {
+  const getTitle = () => {
     switch (progress.status) {
-      case 'preparing':
-        return t('preparing');
-      case 'creating':
-        return t('creatingFolders');
-      case 'moving':
-        return t('movingFiles');
       case 'completed':
-        return t('completed');
+        return t('organizationComplete');
+      case 'cancelled':
+        return t('organizeCancelled');
       case 'error':
         return t('error');
       default:
-        return '';
+        return t('organizingPhotos');
     }
   };
 
@@ -45,37 +43,66 @@ const ProgressModal: React.FC<ProgressModalProps> = ({
         return <CheckCircleIcon className="h-8 w-8 text-green-400" />;
       case 'error':
         return <ExclamationTriangleIcon className="h-8 w-8 text-red-400" />;
+      case 'cancelled':
+        return <ExclamationTriangleIcon className="h-8 w-8 text-amber-400" />;
       default:
         return <ArrowPathIcon className="h-8 w-8 text-sky-400 animate-spin" />;
     }
   };
 
+  // What happened, in sentences. Always says that originals were untouched:
+  // the operation only ever copies.
+  const getSummaryLines = (): string[] => {
+    if (!summary) return [];
+    const lines: string[] = [];
+    const copied = summary.copied + summary.renamed;
+    if (progress.status === 'completed') {
+      lines.push(t('organizeSummaryCopied', { count: copied }));
+    } else if (copied > 0) {
+      lines.push(t('organizeSummaryCopiedBeforeStop', { count: copied }));
+    }
+    if (summary.alreadyPresent > 0) {
+      lines.push(t('organizeSummaryAlreadyPresent', { count: summary.alreadyPresent }));
+    }
+    if (summary.renamed > 0) {
+      lines.push(t('organizeSummaryRenamed', { count: summary.renamed }));
+    }
+    lines.push(t('organizeOriginalsUntouched'));
+    return lines;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-fade-in">
-      <div className="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-6 max-w-md w-full mx-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="progress-modal-title"
+        className="bg-slate-800 rounded-xl shadow-2xl border border-slate-700 p-6 max-w-md w-full mx-4"
+      >
         <div className="flex items-center justify-center mb-4">
           {getStatusIcon()}
         </div>
 
         <div className="text-center mb-6">
-          <h3 className="text-lg font-semibold text-slate-100 mb-2">
-            {progress.status === 'completed' ? t('organizationComplete') : t('organizingPhotos')}
+          <h3 id="progress-modal-title" className="text-lg font-semibold text-slate-100 mb-2">
+            {getTitle()}
           </h3>
-          
-          <p className="text-sm text-slate-400 mb-4">
-            {getStatusText()}
-          </p>
 
-          {progress.currentFile && progress.status !== 'completed' && (
+          {!isFinished && (
+            <p className="text-sm text-slate-400 mb-4">
+              {progress.status === 'preparing' ? t('preparing') : t('copyingFiles')}
+            </p>
+          )}
+
+          {progress.currentFile && !isFinished && (
             <p className="text-xs text-slate-500 truncate">
               {progress.currentFile}
             </p>
           )}
         </div>
 
-        {/* Progress Bar */}
-        {progress.status !== 'completed' && progress.status !== 'error' && (
-          <div className="mb-6">
+        {!isFinished && (
+          <div className="mb-6" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progressPercentage}>
             <div className="flex justify-between text-sm text-slate-400 mb-2">
               <span>{progress.current} / {progress.total}</span>
               <span>{progressPercentage}%</span>
@@ -89,16 +116,22 @@ const ProgressModal: React.FC<ProgressModalProps> = ({
           </div>
         )}
 
-        {/* Error Message */}
         {progress.status === 'error' && progress.error && (
-          <div className="mb-6 p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
+          <div className="mb-4 p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
             <p className="text-red-300 text-sm">{progress.error}</p>
           </div>
         )}
 
-        {/* Action Buttons */}
+        {isFinished && getSummaryLines().length > 0 && (
+          <ul className="mb-6 space-y-1 text-sm text-slate-300">
+            {getSummaryLines().map(line => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
+
         <div className="flex justify-end space-x-3">
-          {progress.status === 'completed' || progress.status === 'error' ? (
+          {isFinished ? (
             <button
               onClick={onClose}
               className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
@@ -106,22 +139,14 @@ const ProgressModal: React.FC<ProgressModalProps> = ({
               {t('close')}
             </button>
           ) : (
-            <>
-              {onCancel && (
-                <button
-                  onClick={onCancel}
-                  className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"
-                >
-                  {t('cancel')}
-                </button>
-              )}
+            onCancel && (
               <button
-                disabled
-                className="px-4 py-2 bg-sky-600/50 text-white rounded-lg cursor-not-allowed"
+                onClick={onCancel}
+                className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors"
               >
-                {t('processing')}...
+                {t('cancel')}
               </button>
-            </>
+            )
           )}
         </div>
       </div>

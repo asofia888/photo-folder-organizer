@@ -8,7 +8,6 @@ describe('Thumbnail', () => {
   const mockPhoto: Photo = {
     id: 'test-photo-1',
     date: '2023-01-01T00:00:00.000Z',
-    url: 'original-photo-url',
     file: createMockFile('test.jpg', 1024, 'image/jpeg')
   }
 
@@ -50,7 +49,7 @@ describe('Thumbnail', () => {
 
       const image = screen.getByRole('img')
       expect(image).toBeInTheDocument()
-      expect(image).toHaveAttribute('alt', 'Photo thumbnail')
+      expect(image).toHaveAttribute('alt', 'test.jpg')
     })
 
     it('should render image with correct attributes', () => {
@@ -87,7 +86,7 @@ describe('Thumbnail', () => {
 
       // Wait for intersection observer to trigger
       await waitFor(() => {
-        const image = screen.queryByAltText('Photo thumbnail')
+        const image = screen.queryByAltText('test.jpg')
         expect(image).toBeInTheDocument()
       })
     })
@@ -204,46 +203,35 @@ describe('Thumbnail', () => {
     })
   })
 
-  describe('thumbnail URL resolution', () => {
-    it('should use an existing url when available', () => {
-      const photoWithUrl = { ...mockPhoto, url: 'existing-url' }
-      render(<Thumbnail photo={photoWithUrl} lazy={false} />)
-
-      const image = screen.getByRole('img')
-      expect(image).toHaveAttribute('src', 'existing-url')
-    })
-
-    it('should create an object URL from the File when no url is set', () => {
-      const photoWithoutUrl = { ...mockPhoto, url: null }
-      render(<Thumbnail photo={photoWithoutUrl} lazy={false} />)
+  describe('source resolution', () => {
+    it('should create an object URL from the File', () => {
+      render(<Thumbnail photo={mockPhoto} lazy={false} />)
 
       expect(URL.createObjectURL).toHaveBeenCalledWith(mockPhoto.file)
       const image = screen.getByRole('img')
       expect(image).toHaveAttribute('src', 'mocked-object-url')
     })
 
-    it('should prefer the extracted thumbnail URL for RAW files', () => {
+    it('should use the embedded preview for RAW files, never the RAW file itself', () => {
+      const preview = new Blob(['jpeg'], { type: 'image/jpeg' })
       const rawPhoto: Photo = {
         id: 'raw-1',
         date: '2023-01-01T00:00:00.000Z',
-        url: null,
         file: createMockFile('test.cr2', 1024),
         isRaw: true,
-        thumbnailUrl: 'raw-thumb-url'
+        thumbnail: preview
       }
       render(<Thumbnail photo={rawPhoto} lazy={false} />)
 
-      const image = screen.getByRole('img')
-      expect(image).toHaveAttribute('src', 'raw-thumb-url')
-      // A File-based object URL must NOT be created for RAW previews.
-      expect(URL.createObjectURL).not.toHaveBeenCalled()
+      expect(screen.getByRole('img')).toBeInTheDocument()
+      expect(URL.createObjectURL).toHaveBeenCalledWith(preview)
+      expect(URL.createObjectURL).not.toHaveBeenCalledWith(rawPhoto.file)
     })
 
-    it('should show the RAW placeholder when a RAW file has no thumbnail', () => {
+    it('should show the RAW placeholder when a RAW file has no preview', () => {
       const rawPhoto: Photo = {
         id: 'raw-2',
         date: '2023-01-01T00:00:00.000Z',
-        url: null,
         file: createMockFile('test.cr2', 1024),
         isRaw: true
       }
@@ -253,8 +241,35 @@ describe('Thumbnail', () => {
       expect(screen.getByText('RAW')).toBeInTheDocument()
     })
 
+    it('falls back to the embedded preview when the browser cannot decode the file', async () => {
+      const preview = new Blob(['jpeg'], { type: 'image/jpeg' })
+      vi.mocked(URL.createObjectURL).mockImplementation((blob) => (blob === preview ? 'preview-url' : 'file-url'))
+      const photo: Photo = { ...mockPhoto, thumbnail: preview }
+      render(<Thumbnail photo={photo} lazy={false} />)
+
+      expect(screen.getByRole('img')).toHaveAttribute('src', 'file-url')
+      fireEvent.error(screen.getByRole('img'))
+
+      await waitFor(() => {
+        expect(screen.getByRole('img')).toHaveAttribute('src', 'preview-url')
+      })
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('file-url')
+    })
+
+    it('shows a format tile, not an error, for HEIC the browser cannot display', async () => {
+      const heic: Photo = { ...mockPhoto, file: createMockFile('IMG_0001.HEIC', 1024, 'image/heic') }
+      render(<Thumbnail photo={heic} lazy={false} />)
+
+      fireEvent.error(screen.getByRole('img'))
+
+      await waitFor(() => {
+        expect(screen.getByText('HEIC')).toBeInTheDocument()
+      })
+      expect(screen.queryByText('Failed to load')).not.toBeInTheDocument()
+    })
+
     it('should handle a missing file gracefully', () => {
-      const photoWithoutFile = { ...mockPhoto, file: undefined, url: null }
+      const photoWithoutFile = { ...mockPhoto, file: undefined }
 
       expect(() => {
         render(<Thumbnail photo={photoWithoutFile} lazy={false} />)
@@ -263,11 +278,20 @@ describe('Thumbnail', () => {
   })
 
   describe('accessibility', () => {
-    it('should have appropriate alt text', () => {
+    it('should use the file name as alt text', () => {
       render(<Thumbnail photo={mockPhoto} lazy={false} />)
 
       const image = screen.getByRole('img')
-      expect(image).toHaveAttribute('alt', 'Photo thumbnail')
+      expect(image).toHaveAttribute('alt', 'test.jpg')
+    })
+
+    it('should be a keyboard-operable button when clickable', () => {
+      const handleClick = vi.fn()
+      render(<Thumbnail photo={mockPhoto} onClick={handleClick} lazy={false} />)
+
+      const button = screen.getByRole('button', { name: 'View photo test.jpg' })
+      fireEvent.click(button)
+      expect(handleClick).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -276,7 +300,7 @@ describe('Thumbnail', () => {
       render(<Thumbnail photo={mockPhoto} lazy={false} />)
 
       const container = screen.getByRole('img').closest('div')
-      expect(container).toHaveClass('aspect-w-1', 'aspect-h-1')
+      expect(container).toHaveClass('aspect-square')
     })
 
     it('should have hover effects', () => {

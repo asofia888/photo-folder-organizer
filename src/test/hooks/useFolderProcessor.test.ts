@@ -2,50 +2,60 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook as renderHookBase, act } from '@testing-library/react'
 import { useFolderProcessor } from '../../../hooks/useFolderProcessor'
 import { createMockFileSystemDirectoryEntry, createMockFile, mockWorkerResponse } from '../test-utils'
-import MemoryManager from '../../../utils/memoryManager'
-import { LanguageProvider } from '../../../contexts/LanguageContext'
+import { LanguageProvider, useLanguage } from '../../../contexts/LanguageContext'
+import { setCurrentLocale, translations } from '../../../i18n'
 
 // useFolderProcessor calls useLanguage(), so the hook must render inside the
 // LanguageProvider context.
 const renderHook = <T,>(callback: () => T) =>
   renderHookBase(callback, { wrapper: LanguageProvider })
 
-// Mock MemoryManager with a single shared instance so the hook and the tests
-// observe the same spies.
-vi.mock('../../../utils/memoryManager', () => {
-  const instance = {
-    startMonitoring: vi.fn(),
-    stopMonitoring: vi.fn(),
-    cleanup: vi.fn(),
-    registerCleanupCallback: vi.fn(() => vi.fn()),
-    isMemoryUsageHigh: vi.fn(() => false),
-  }
-  return { default: { getInstance: () => instance } }
+const doneMessage = (folders: Array<{ id: string; date: Date | null; isEstimated?: boolean }>) => ({
+  type: 'done',
+  payload: folders.map(({ id, date, isEstimated = false }) => ({
+    id,
+    originalName: id,
+    photos: [{ id: `${id}-photo`, date: date?.toISOString() ?? '', file: createMockFile(`${id}.jpg`) }],
+    representativeDate: date,
+    dateIsEstimated: isEstimated,
+  })),
+  skippedFiles: [],
 })
+
+const fileInFolder = (relativePath: string) => {
+  const file = createMockFile(relativePath.split('/').pop())
+  Object.defineProperty(file, 'webkitRelativePath', { value: relativePath })
+  return file
+}
 
 describe('useFolderProcessor', () => {
   let mockWorker: any
 
   beforeEach(() => {
     vi.clearAllMocks()
-    
-    // Mock Worker
+    // Error messages are translated outside React; undo any language switch.
+    setCurrentLocale('en')
+
     mockWorker = {
       postMessage: vi.fn(),
       terminate: vi.fn(),
       onmessage: null,
       onerror: null,
     }
-    
+
     vi.mocked(Worker).mockImplementation(() => mockWorker)
-    
-    // Mock URL.createObjectURL
-    vi.mocked(URL.createObjectURL).mockReturnValue('mocked-blob-url')
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
+
+  const startRun = async (result: { current: ReturnType<typeof useFolderProcessor> }) => {
+    const directory = createMockFileSystemDirectoryEntry('test-folder', [createMockFile('photo1.jpg')])
+    await act(async () => {
+      await result.current.processDirectory(directory, 'earliest')
+    })
+  }
 
   it('should initialize with correct default state', () => {
     const { result } = renderHook(() => useFolderProcessor())
@@ -58,51 +68,39 @@ describe('useFolderProcessor', () => {
     expect(result.current.progress).toBeNull()
   })
 
-  it('should start memory monitoring on mount', () => {
-    const mockMemoryManager = MemoryManager.getInstance()
-    
+  it('does not start a worker until there is something to process', () => {
     renderHook(() => useFolderProcessor())
-    
-    expect(mockMemoryManager.startMonitoring).toHaveBeenCalledWith(5000)
-  })
-
-  it('should cleanup on unmount', () => {
-    const mockMemoryManager = MemoryManager.getInstance()
-    const { unmount } = renderHook(() => useFolderProcessor())
-    
-    act(() => {
-      unmount()
-    })
-    
-    expect(mockWorker.terminate).toHaveBeenCalled()
-    expect(mockMemoryManager.stopMonitoring).toHaveBeenCalled()
+    expect(Worker).not.toHaveBeenCalled()
   })
 
   describe('processDirectory', () => {
-    it('should process directory with valid structure', async () => {
+    it('sends the images of each sub-folder to the worker', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
+
       const mockFiles = [
         createMockFile('photo1.jpg', 1024, 'image/jpeg'),
-        createMockFile('photo2.png', 2048, 'image/png')
+        createMockFile('photo2.png', 2048, 'image/png'),
+        createMockFile('notes.txt', 10, 'text/plain'),
       ]
-      const mockDirectory = createMockFileSystemDirectoryEntry('test-folder', mockFiles)
-      
-      act(() => {
-        result.current.processDirectory(mockDirectory, 'earliest')
+      await act(async () => {
+        await result.current.processDirectory(createMockFileSystemDirectoryEntry('test-folder', mockFiles), 'latest')
       })
-      
+
       expect(result.current.status).toBe('processing')
       expect(result.current.rootFolderName).toBe('test-folder')
-      
-      // Mock worker response
+      expect(mockWorker.postMessage).toHaveBeenCalledTimes(1)
+      const request = mockWorker.postMessage.mock.calls[0][0]
+      expect(request.dateLogic).toBe('latest')
+      expect(request.folderFileGroups).toHaveLength(1)
+      expect(request.folderFileGroups[0].files.map((f: File) => f.name)).toEqual(['photo1.jpg', 'photo2.png'])
+
       await act(async () => {
         mockWorkerResponse(mockWorker, {
           type: 'start',
           payload: { totalFolders: 1, totalFiles: 2, phase: 'processing' }
         })
       })
-      
+
       expect(result.current.progress).toEqual({
         processedFolders: 0,
         totalFolders: 1,
@@ -112,158 +110,186 @@ describe('useFolderProcessor', () => {
       })
     })
 
-    it('should handle worker success response', async () => {
+    it('shows the results sorted by date and releases the worker', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      const mockFiles = [createMockFile('photo1.jpg')]
-      const mockDirectory = createMockFileSystemDirectoryEntry('test-folder', mockFiles)
-      
-      act(() => {
-        result.current.processDirectory(mockDirectory, 'earliest')
-      })
-      
-      const mockFolders = [{
-        id: 'folder1',
-        originalName: 'test-folder',
-        photos: [{
-          id: 'photo1',
-          date: '2023-01-01',
-          file: mockFiles[0]
-        }],
-        representativeDate: new Date('2023-01-01'),
-        newName: '',
-        isRenamed: false
-      }]
-      
+      await startRun(result)
+
       await act(async () => {
-        mockWorkerResponse(mockWorker, {
-          type: 'done',
-          payload: mockFolders
-        })
+        mockWorkerResponse(mockWorker, doneMessage([
+          { id: 'undated', date: null },
+          { id: 'newer', date: new Date(2024, 5, 2) },
+          { id: 'older', date: new Date(2024, 5, 1), isEstimated: true },
+        ]))
       })
-      
+
       expect(result.current.status).toBe('done')
-      expect(result.current.folders).toHaveLength(1)
-      expect(result.current.folders[0].originalName).toBe('test-folder')
+      expect(result.current.folders.map(f => f.id)).toEqual(['older', 'newer', 'undated'])
+      expect(result.current.folders[0].dateIsEstimated).toBe(true)
+      expect(result.current.folders[0].newName).toBe('')
+      expect(result.current.folders[0].isRenamed).toBe(false)
+      expect(mockWorker.terminate).toHaveBeenCalled()
     })
 
     it('should handle worker error response', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      const mockFiles = [createMockFile('photo1.jpg')]
-      const mockDirectory = createMockFileSystemDirectoryEntry('test-folder', mockFiles)
-      
-      act(() => {
-        result.current.processDirectory(mockDirectory, 'earliest')
-      })
-      
+      await startRun(result)
+
       await act(async () => {
-        mockWorkerResponse(mockWorker, {
-          type: 'error',
-          error: 'Processing failed'
-        })
+        mockWorkerResponse(mockWorker, { type: 'error', error: 'Processing failed' })
       })
-      
+
       expect(result.current.status).toBe('error')
-      expect(result.current.error).toBeTruthy()
+      expect(result.current.error).toBe(translations.en.errorWorkerError)
     })
 
-    it('should handle directory with no subfolders', async () => {
+    it('fails instead of spinning forever when the worker crashes', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      // Mock directory reader that returns no subdirectories
+      await startRun(result)
+
+      await act(async () => {
+        mockWorker.onerror({ message: 'out of memory', preventDefault: vi.fn() })
+      })
+
+      expect(result.current.status).toBe('error')
+      expect(result.current.error).toBe(translations.en.errorWorkerError)
+      expect(mockWorker.terminate).toHaveBeenCalled()
+    })
+
+    it('tells the user the folder has no sub-folders', async () => {
+      const { result } = renderHook(() => useFolderProcessor())
+
       const mockDirectory = {
         name: 'empty-folder',
         createReader: () => ({
           readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-            callback([]) // No entries
+            callback([])
           }
         })
-      } as FileSystemDirectoryEntry
-      
+      } as unknown as FileSystemDirectoryEntry
+
       await act(async () => {
-        try {
-          await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch {
-          // Expected to throw
-        }
+        await result.current.processDirectory(mockDirectory, 'earliest')
       })
-      
+
       expect(result.current.status).toBe('error')
-      expect(result.current.error).toBeTruthy()
+      expect(result.current.error).toBe(translations.en.errorNoSubFolders)
     })
 
-    it('should handle directory with no images', async () => {
+    it('tells the user no images were found', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      // Mock directory with subdirectory but no image files
-      const mockDirectory = {
-        name: 'no-images-folder',
-        createReader: () => {
-          let read = false
-          return {
-            readEntries: (callback: (entries: FileSystemEntry[]) => void) => {
-              if (read) {
-                callback([]) // Reader exhausted — stop the read loop
-                return
-              }
-              read = true
-              const subDir = {
-                name: 'subfolder',
-                isDirectory: true,
-                createReader: () => ({
-                  readEntries: (cb: (entries: FileSystemEntry[]) => void) => {
-                    cb([]) // No image files
-                  }
-                })
-              }
-              callback([subDir as unknown as FileSystemEntry])
-            }
-          }
-        }
-      } as FileSystemDirectoryEntry
-      
+
+      const directory = createMockFileSystemDirectoryEntry('no-images', [createMockFile('notes.txt', 10, 'text/plain')])
       await act(async () => {
-        try {
-          await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch {
-          // Expected to throw
-        }
+        await result.current.processDirectory(directory, 'earliest')
       })
-      
+
       expect(result.current.status).toBe('error')
+      expect(result.current.error).toBe(translations.en.errorNoImages)
+      expect(Worker).not.toHaveBeenCalled()
+    })
+
+    it('should handle processing exceptions', async () => {
+      const { result } = renderHook(() => useFolderProcessor())
+
+      const mockDirectory = {
+        name: 'error-folder',
+        createReader: () => {
+          throw new Error('Reader creation failed')
+        }
+      } as unknown as FileSystemDirectoryEntry
+
+      await act(async () => {
+        await result.current.processDirectory(mockDirectory, 'earliest')
+      })
+
+      expect(result.current.status).toBe('error')
+      expect(result.current.error).toBe(translations.en.errorProcessingFailed)
+    })
+  })
+
+  describe('processFileList', () => {
+    it('groups picked files by their immediate sub-folder', () => {
+      const { result } = renderHook(() => useFolderProcessor())
+
+      act(() => {
+        result.current.processFileList([
+          fileInFolder('root/a/1.jpg'),
+          fileInFolder('root/a/2.heic'),
+          fileInFolder('root/b/3.jpg'),
+          fileInFolder('root/top-level.jpg'),
+          fileInFolder('root/a/nested/4.jpg'),
+        ], 'earliest')
+      })
+
+      expect(result.current.rootFolderName).toBe('root')
+      const { folderFileGroups } = mockWorker.postMessage.mock.calls[0][0]
+      expect(folderFileGroups.map((g: any) => [g.id, g.files.map((f: File) => f.name)])).toEqual([
+        ['/root/a', ['1.jpg', '2.heic']],
+        ['/root/b', ['3.jpg']],
+      ])
+    })
+  })
+
+  describe('run lifecycle', () => {
+    it('keeps processing when the language is switched mid-run', async () => {
+      const { result } = renderHook(() => ({ processor: useFolderProcessor(), language: useLanguage() }))
+      const processorResult = { get current() { return result.current.processor } }
+      await startRun(processorResult)
+
+      act(() => {
+        result.current.language.setLocale('ja')
+      })
+
+      expect(mockWorker.terminate).not.toHaveBeenCalled()
+      expect(result.current.processor.status).toBe('processing')
+
+      await act(async () => {
+        mockWorkerResponse(mockWorker, doneMessage([{ id: 'a', date: new Date(2024, 0, 1) }]))
+      })
+      expect(result.current.processor.status).toBe('done')
+    })
+
+    it('cancel stops the worker and ignores its late messages', async () => {
+      const { result } = renderHook(() => useFolderProcessor())
+      await startRun(result)
+      const staleOnMessage = mockWorker.onmessage
+
+      act(() => {
+        result.current.cancel()
+      })
+
+      expect(result.current.status).toBe('idle')
+      expect(mockWorker.terminate).toHaveBeenCalled()
+
+      await act(async () => {
+        staleOnMessage({ data: doneMessage([{ id: 'a', date: null }]) })
+      })
+      expect(result.current.status).toBe('idle')
+      expect(result.current.folders).toEqual([])
+    })
+
+    it('terminates a running worker on unmount', async () => {
+      const { result, unmount } = renderHook(() => useFolderProcessor())
+      await startRun(result)
+
+      unmount()
+
+      expect(mockWorker.terminate).toHaveBeenCalled()
     })
   })
 
   describe('progress tracking', () => {
     it('should update progress during processing', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      const mockDirectory = createMockFileSystemDirectoryEntry('test-folder', [
-        createMockFile('photo1.jpg')
-      ])
-      
-      act(() => {
-        result.current.processDirectory(mockDirectory, 'earliest')
-      })
-      
-      // Start progress
+      await startRun(result)
+
       await act(async () => {
         mockWorkerResponse(mockWorker, {
           type: 'start',
           payload: { totalFolders: 3, totalFiles: 10, phase: 'processing' }
         })
       })
-      
-      expect(result.current.progress).toEqual({
-        processedFolders: 0,
-        totalFolders: 3,
-        processedFiles: 0,
-        totalFiles: 10,
-        phase: 'processing'
-      })
-      
-      // Progress update
+
       await act(async () => {
         mockWorkerResponse(mockWorker, {
           type: 'progress',
@@ -274,87 +300,37 @@ describe('useFolderProcessor', () => {
             totalFiles: 10,
             currentFolderName: 'folder1',
             phase: 'processing',
-            memoryUsage: 1024 * 1024 * 100
           }
         })
       })
-      
+
       expect(result.current.progress!.processedFolders).toBe(1)
       expect(result.current.progress!.processedFiles).toBe(3)
       expect(result.current.processingMessage).toContain('folder1')
-      
-      // File-level progress
+
       await act(async () => {
         mockWorkerResponse(mockWorker, {
           type: 'file-progress',
-          payload: {
-            processedFiles: 5,
-            totalFiles: 10,
-            currentFolder: 'folder2',
-            batchProgress: 0.5
-          }
+          payload: { processedFiles: 5, totalFiles: 10 }
         })
       })
-      
-      expect(result.current.progress!.processedFiles).toBe(5)
-    })
-  })
 
-  describe('folder management', () => {
-    it('should update folder name', async () => {
-      const { result } = renderHook(() => useFolderProcessor())
-      
-      // Set initial folders
-      const mockFolders = [{
-        id: 'folder1',
-        originalName: 'old-name',
-        photos: [],
-        representativeDate: new Date(),
-        newName: '',
-        isRenamed: false
-      }]
-      
-      await act(async () => {
-        result.current.setFolders(mockFolders)
-      })
-      
-      // Update folder name
-      act(() => {
-        // This would typically be called from FolderCard
-        const updatedFolders = result.current.folders.map(folder =>
-          folder.id === 'folder1'
-            ? { ...folder, newName: 'new-name', isRenamed: true }
-            : folder
-        )
-        result.current.setFolders(updatedFolders)
-      })
-      
-      expect(result.current.folders[0].newName).toBe('new-name')
-      expect(result.current.folders[0].isRenamed).toBe(true)
+      expect(result.current.progress!.processedFiles).toBe(5)
     })
   })
 
   describe('reset functionality', () => {
     it('should reset to initial state', async () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
-      // Set some state
-      act(() => {
-        result.current.setFolders([{
-          id: 'test',
-          originalName: 'test',
-          photos: [],
-          representativeDate: new Date(),
-          newName: 'test-name',
-          isRenamed: true
-        }])
+      await startRun(result)
+      await act(async () => {
+        mockWorkerResponse(mockWorker, doneMessage([{ id: 'a', date: null }]))
       })
-      
-      // Reset
+
       act(() => {
         result.current.reset()
       })
-      
+
       expect(result.current.status).toBe('idle')
       expect(result.current.folders).toEqual([])
       expect(result.current.error).toBeNull()
@@ -367,50 +343,13 @@ describe('useFolderProcessor', () => {
   describe('error handling', () => {
     it('should handle setFailure', () => {
       const { result } = renderHook(() => useFolderProcessor())
-      
+
       act(() => {
         result.current.setFailure('Test error message')
       })
-      
+
       expect(result.current.error).toBe('Test error message')
       expect(result.current.status).toBe('error')
-    })
-
-    it('should handle processing exceptions', async () => {
-      const { result } = renderHook(() => useFolderProcessor())
-      
-      // Mock directory that will cause an error
-      const mockDirectory = {
-        name: 'error-folder',
-        createReader: () => {
-          throw new Error('Reader creation failed')
-        }
-      } as unknown as FileSystemDirectoryEntry
-      
-      await act(async () => {
-        try {
-          await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch {
-          // Expected to throw and be handled
-        }
-      })
-      
-      expect(result.current.status).toBe('error')
-      expect(result.current.error).toBeTruthy()
-    })
-  })
-
-  describe('cleanup', () => {
-    it('should cleanup resources', () => {
-      const { result } = renderHook(() => useFolderProcessor())
-      
-      act(() => {
-        result.current.cleanup()
-      })
-      
-      // Should revoke any object URLs that were created
-      // This would be tested if we had actual URLs to revoke
-      expect(true).toBe(true) // Placeholder assertion
     })
   })
 })

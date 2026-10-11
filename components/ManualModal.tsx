@@ -1,61 +1,59 @@
-
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { BookOpenIcon } from './Icons';
 import Spinner from './Spinner';
 import { marked } from 'marked';
 import BaseModal from './BaseModal';
+import type { Locale } from '../i18n';
 
 interface ManualModalProps {
     isOpen: boolean;
     onClose: () => void;
 }
 
+const MANUAL_PATHS: Record<Locale, string> = {
+    ja: '/MANUAL.md',
+    en: '/MANUAL.en.md',
+};
+
 const ManualModal: React.FC<ManualModalProps> = ({ isOpen, onClose }) => {
-    const { t } = useLanguage();
-    const [manualContent, setManualContent] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
+    const { t, locale } = useLanguage();
+    // Rendered manual per language, loaded the first time it is opened.
+    const [manuals, setManuals] = useState<Partial<Record<Locale, string>>>({});
+    const [failedLocale, setFailedLocale] = useState<Locale | null>(null);
+    const manualContent = manuals[locale];
 
     useEffect(() => {
-        if (isOpen && !manualContent && !isLoading) {
-            setIsLoading(true);
-            setError('');
-            fetch('/MANUAL.md')
-                .then(response => {
-                    // The SPA rewrite (vercel.json) serves index.html with a 200
-                    // for missing files, so an HTML response means the manual is
-                    // absent from the build — fail instead of rendering it.
-                    const contentType = response.headers.get('content-type') ?? '';
-                    if (!response.ok || contentType.includes('text/html')) {
-                        throw new Error('Could not load manual.');
-                    }
-                    return response.text();
-                })
-                .then(async text => {
-                    try {
-                        const html = await marked.parse(text);
-                        setManualContent(typeof html === 'string' ? html : String(html));
-                    } catch (parseError) {
-                        console.error('Markdown parse error:', parseError);
-                        // Fallback: display as plain text with basic formatting
-                        const fallbackHtml = text
-                            .replace(/\n/g, '<br>')
-                            .replace(/#{1,6}\s+(.*)/g, '<h2 style="color: #e2e8f0; font-size: 1.5rem; font-weight: 600; margin: 1rem 0;">$1</h2>')
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                        setManualContent(fallbackHtml);
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    setError('Failed to load user manual.');
-                })
-                .finally(() => {
-                    setIsLoading(false);
-                });
-        }
-    }, [isOpen, manualContent, isLoading]);
+        if (!isOpen || manualContent !== undefined) return;
+
+        let cancelled = false;
+        setFailedLocale(null);
+        fetch(MANUAL_PATHS[locale])
+            .then(response => {
+                // The SPA rewrite (vercel.json) serves index.html with a 200
+                // for missing files, so an HTML response means the manual is
+                // absent from the build — fail instead of rendering it.
+                const contentType = response.headers.get('content-type') ?? '';
+                if (!response.ok || contentType.includes('text/html')) {
+                    throw new Error(`Could not load ${MANUAL_PATHS[locale]}`);
+                }
+                return response.text();
+            })
+            .then(text => marked.parse(text))
+            .then(html => {
+                if (!cancelled) setManuals(prev => ({ ...prev, [locale]: html }));
+            })
+            .catch(err => {
+                console.error(err);
+                if (!cancelled) setFailedLocale(locale);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, locale, manualContent]);
+
+    const isLoading = isOpen && manualContent === undefined && failedLocale !== locale;
 
     const title = (
         <span className="flex items-center">
@@ -82,7 +80,7 @@ const ManualModal: React.FC<ManualModalProps> = ({ isOpen, onClose }) => {
             maxWidth="max-w-4xl"
         >
             {isLoading && <div className="flex justify-center items-center h-48"><Spinner /></div>}
-            {error && <div className="text-red-400 text-center p-4">{error}</div>}
+            {failedLocale === locale && <div className="text-red-400 text-center p-4">{t('manualLoadFailed')}</div>}
             {manualContent && (
                 <div
                     className="markdown-content"

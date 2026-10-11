@@ -1,17 +1,24 @@
-
 import React, { useState } from 'react';
-import { Photo } from '../types';
-import { FolderCardProps } from '../types/componentTypes';
+import { Folder, Photo } from '../types';
 import Thumbnail from './Thumbnail';
 import ImageModal from './ImageModal';
 import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
-import { formatScriptDate } from '../utils/dateUtils';
+import { buildFinalFolderName, formatFolderDate, FolderNameIssue } from '../utils/folderNaming';
+
+interface FolderCardProps {
+  readonly folder: Folder;
+  readonly onNameChange: (folderId: string, newName: string) => void;
+  readonly onEdit: (folderId: string) => void;
+  readonly nameIssue?: FolderNameIssue;
+  readonly maxThumbnails?: number;
+}
 
 const FolderCard: React.FC<FolderCardProps> = ({
   folder,
   onNameChange,
   onEdit,
+  nameIssue,
   maxThumbnails = 4
 }) => {
     const { t } = useLanguage();
@@ -19,20 +26,17 @@ const FolderCard: React.FC<FolderCardProps> = ({
     const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
 
-    const formatDate = (date: Date | null): string => {
-        if (!date) return t('unknownDate');
-        return formatScriptDate(date);
-    };
-    
-
-    const formattedDate = formatDate(folder.representativeDate);
-    const finalName = `${formattedDate}_${folder.newName}`;
+    const formattedDate = formatFolderDate(folder.representativeDate, t('unknownDate'));
+    const finalName = buildFinalFolderName(folder, t('unknownDate'));
+    const nameErrorId = `folder-name-error-${folder.id}`;
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(finalName).then(() => {
+        // The Clipboard API is unavailable outside secure contexts and can be
+        // denied; the name stays visible on the card either way.
+        navigator.clipboard?.writeText(finalName).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
-        });
+        }).catch(() => undefined);
     };
 
     const handleThumbnailClick = (photo: Photo) => {
@@ -85,6 +89,10 @@ const FolderCard: React.FC<FolderCardProps> = ({
                     </div>
                 </div>
 
+                {folder.dateIsEstimated && (
+                    <p className="-mt-2 mb-4 text-xs text-amber-300/90">{t('dateEstimatedNote')}</p>
+                )}
+
                 {!folder.isRenamed && (
                     <>
                         <div className="mb-4">
@@ -114,9 +122,20 @@ const FolderCard: React.FC<FolderCardProps> = ({
                                     value={folder.newName}
                                     onChange={(e) => onNameChange(folder.id, e.target.value)}
                                     placeholder={t('newFolderNamePlaceholder')}
-                                    className="block w-full px-3 py-2 bg-slate-900/50 border border-slate-600 rounded-r-md shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 sm:text-sm text-slate-200 placeholder-slate-400"
+                                    aria-invalid={nameIssue ? true : undefined}
+                                    aria-describedby={nameIssue ? nameErrorId : undefined}
+                                    className={`block w-full px-3 py-2 bg-slate-900/50 border rounded-r-md shadow-sm focus:outline-none focus:ring-2 sm:text-sm text-slate-200 placeholder-slate-400 ${
+                                        nameIssue
+                                            ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                                            : 'border-slate-600 focus:ring-sky-500 focus:border-sky-500'
+                                    }`}
                                 />
                             </div>
+                            {nameIssue && (
+                                <p id={nameErrorId} className="mt-2 text-sm text-red-400">
+                                    {t(nameIssue === 'invalid' ? 'folderNameInvalid' : 'folderNameDuplicate')}
+                                </p>
+                            )}
                         </div>
                     </>
                 )}

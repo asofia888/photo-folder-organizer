@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import FolderCard from './FolderCard';
 import Spinner from './Spinner';
 import ProgressModal from './ProgressModal';
@@ -7,42 +7,18 @@ import PerformanceMonitor from './PerformanceMonitor';
 import { FolderArrowDownIcon, ArrowPathIcon, CodeBracketIcon, SaveIcon, ComputerDesktopIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useFolderProcessor, DateLogic } from '../hooks/useFolderProcessor';
-import { organizePhotosToFolders, isFileSystemAccessSupported, isValidFolderNameBoolean, ProcessingProgress } from '../utils/fileSystemUtils';
-import { Folder } from '../types';
+import {
+    organizePhotosToFolders,
+    isFileSystemAccessSupported,
+    pickTargetDirectory,
+    toFileSystemError,
+    FileSystemError,
+    ProcessingProgress
+} from '../utils/fileSystemUtils';
 import { ErrorType, ErrorSeverity, handleError } from '../utils/errorHandler';
-import { formatScriptDate } from '../utils/dateUtils';
-
-// --- Utility Functions ---
-
-type FormatDateFn = (date: Date | null) => string;
-
-const createRenameScriptBlob = (
-    folders: Folder[],
-    formatDate: FormatDateFn
-): { blob: Blob; filename: string } => {
-    const isWindows = typeof navigator !== 'undefined' && navigator.platform.toLowerCase().includes('win');
-    const renamedFolders = folders.filter(f => f.isRenamed && f.newName.trim());
-
-    let scriptContent = '';
-    if (isWindows) {
-        scriptContent = '@echo off\r\nchcp 65001 > nul\r\n';
-        renamedFolders.forEach(folder => {
-            const finalName = `${formatDate(folder.representativeDate)}_${folder.newName}`;
-            scriptContent += `ren "${folder.originalName}" "${finalName}"\r\n`;
-        });
-    } else {
-        scriptContent = '#!/bin/bash\n\n';
-        renamedFolders.forEach(folder => {
-            const finalName = `${formatDate(folder.representativeDate)}_${folder.newName}`;
-            scriptContent += `mv -v -- "${folder.originalName}" "${finalName}"\n`;
-        });
-    }
-
-    const blob = new Blob([scriptContent], { type: 'text/plain' });
-    const filename = isWindows ? 'rename_folders.bat' : 'rename_folders.sh';
-    
-    return { blob, filename };
-};
+import { buildFinalFolderName, findFolderNameIssues } from '../utils/folderNaming';
+import { createRenameScript, detectScriptPlatform } from '../utils/renameScript';
+import { saveNameDraft, clearNameDraft } from '../utils/nameDrafts';
 
 // --- Component ---
 
@@ -57,32 +33,29 @@ const FolderOrganizer: React.FC = () => {
         processingMessage,
         rootFolderName,
         progress,
+        restoredNameCount,
+        dismissRestoredNotice,
         processDirectory,
         processFileList,
+        cancel,
         reset,
-        cleanup,
         setFailure
     } = useFolderProcessor();
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
     const [dateLogic, setDateLogic] = useState<DateLogic>('earliest');
-    const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(process.env.NODE_ENV === 'development');
+    const [showPerformanceMonitor, setShowPerformanceMonitor] = useState(import.meta.env.DEV);
     
     // File System Access states
     const [isOrganizing, setIsOrganizing] = useState(false);
+    const organizeAbortRef = useRef<AbortController | null>(null);
     const [organizingProgress, setOrganizingProgress] = useState<ProcessingProgress>({
         current: 0,
         total: 0,
         status: 'preparing'
     });
 
-    useEffect(() => {
-        return () => {
-            cleanup();
-        };
-    }, [cleanup]);
-    
     const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
@@ -132,15 +105,49 @@ const FolderOrganizer: React.FC = () => {
         );
     }, [setFolders]);
 
+    // Keep typed names in this browser so a reload doesn't lose them.
+    useEffect(() => {
+        if (status === 'done' && rootFolderName) {
+            saveNameDraft(rootFolderName, folders);
+        }
+    }, [status, rootFolderName, folders]);
+
+    const handleDiscardRestoredNames = useCallback(() => {
+        clearNameDraft(rootFolderName);
+        setFolders(prevFolders => prevFolders.map(folder => ({ ...folder, newName: '', isRenamed: false })));
+        dismissRestoredNotice();
+    }, [rootFolderName, setFolders, dismissRestoredNotice]);
+
+    // Leaving mid-copy would leave a half-filled destination behind.
+    const isCopying = isOrganizing && (organizingProgress.status === 'preparing' || organizingProgress.status === 'copying');
+    useEffect(() => {
+        if (!isCopying) return;
+        const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', warnBeforeLeaving);
+        return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
+    }, [isCopying]);
+
+    const unknownDateLabel = t('unknownDate');
+    const nameIssues = useMemo(
+        () => findFolderNameIssues(folders, unknownDateLabel),
+        [folders, unknownDateLabel]
+    );
+
+    // Confirms every entered name that is usable; folders whose name is
+    // invalid or collides with another folder stay editable with their error.
     const handleSaveAll = useCallback(() => {
-        setFolders(prevFolders =>
-            prevFolders.map(folder =>
-                folder.newName.trim() && !folder.isRenamed
+        setFolders(prevFolders => {
+            const issues = findFolderNameIssues(prevFolders, unknownDateLabel);
+            return prevFolders.map(folder =>
+                folder.newName.trim() && !folder.isRenamed && !issues.has(folder.id)
                     ? { ...folder, isRenamed: true }
                     : folder
-            )
-        );
-    }, [setFolders]);
+            );
+        });
+    }, [setFolders, unknownDateLabel]);
     
      const handleEditFolder = useCallback((folderId: string) => {
         setFolders(prevFolders =>
@@ -152,83 +159,82 @@ const FolderOrganizer: React.FC = () => {
         );
     }, [setFolders]);
 
-    
-    const formatDateForScript = (date: Date | null): string => {
-        if (!date) return t('unknownDate');
-        return formatScriptDate(date);
-    };
-
-    // File System Access functionality
-    const handleOrganizeToComputer = useCallback(async () => {
-        if (!isFileSystemAccessSupported()) {
-            alert(t('fileSystemNotSupported'));
-            return;
+    const describeOrganizeError = useCallback((error: FileSystemError): string => {
+        switch (error.code) {
+            case 'PERMISSION_DENIED':
+                return t('organizeErrorPermission');
+            case 'INVALID_NAME':
+                return t('organizeErrorInvalidName', { name: error.target ?? '' });
+            default:
+                return t('organizeErrorWrite', { name: error.target ?? '' });
         }
+    }, [t]);
 
-        // Check if all folders have valid names
-        const validationErrors: string[] = [];
-        const foldersToOrganize = folders.filter(f => f.isRenamed).map(folder => {
-            const finalName = `${formatDateForScript(folder.representativeDate)}_${folder.newName}`;
-            if (!isValidFolderNameBoolean(finalName)) {
-                validationErrors.push(t('invalidFolderNameAlert', { name: finalName }));
-            }
-            return {
-                name: finalName,
-                photos: folder.photos.map(p => p.file).filter((f): f is File => !!f)
-            };
-        });
-
-        if (validationErrors.length > 0) {
-            alert(`${t('fixFolderNamesAlert')}\n${validationErrors.join('\n')}`);
-            return;
-        }
-
-        if (foldersToOrganize.length === 0) {
-            alert(t('noFoldersReadyAlert'));
-            return;
-        }
-
+    const showOrganizeError = useCallback((error: FileSystemError) => {
+        handleError(
+            error,
+            ErrorType.FILE_ACCESS_DENIED,
+            ErrorSeverity.HIGH,
+            { operation: 'organizePhotosToFolders', code: error.code, target: error.target },
+            { notify: false }
+        );
         setIsOrganizing(true);
+        setOrganizingProgress(prev => ({
+            ...prev,
+            status: 'error',
+            error: describeOrganizeError(error),
+            summary: error.summary
+        }));
+    }, [describeOrganizeError]);
+
+    // Copies the confirmed folders into a destination the user picks. Names
+    // were validated when they were confirmed (see handleSaveAll).
+    const handleOrganizeToComputer = useCallback(async () => {
+        const foldersToOrganize = folders.filter(f => f.isRenamed).map(folder => ({
+            name: buildFinalFolderName(folder, unknownDateLabel),
+            photos: folder.photos.map(p => p.file).filter((f): f is File => !!f)
+        }));
+        if (foldersToOrganize.length === 0) return;
+
+        let targetDirectory: FileSystemDirectoryHandle | null;
+        try {
+            targetDirectory = await pickTargetDirectory();
+        } catch (error) {
+            showOrganizeError(toFileSystemError(error));
+            return;
+        }
+        // The user closed the picker: nothing happened, nothing to report.
+        if (!targetDirectory) return;
+
+        const controller = new AbortController();
+        organizeAbortRef.current = controller;
         setOrganizingProgress({ current: 0, total: 0, status: 'preparing' });
+        setIsOrganizing(true);
 
         try {
-            const result = await organizePhotosToFolders(foldersToOrganize, (progress) => {
-                setOrganizingProgress(progress);
-            });
-            
-            if (!result.success) {
-                const appError = handleError(
-                    result.error,
-                    ErrorType.FILE_ACCESS_DENIED,
-                    ErrorSeverity.HIGH,
-                    {
-                        operation: 'organizePhotosToFolders',
-                        folderCount: foldersToOrganize.length
-                    }
-                );
-                setOrganizingProgress(prev => ({
-                    ...prev,
-                    status: 'error',
-                    error: appError.userMessage
-                }));
+            const result = await organizePhotosToFolders(
+                targetDirectory,
+                foldersToOrganize,
+                setOrganizingProgress,
+                controller.signal
+            );
+            if (result.success) return; // completion was reported via progress
+
+            if (result.error.code === 'CANCELLED') {
+                setOrganizingProgress(prev => ({ ...prev, status: 'cancelled', summary: result.error.summary }));
+            } else {
+                showOrganizeError(result.error);
             }
         } catch (error) {
-            const appError = handleError(
-                error instanceof Error ? error : new Error(String(error)),
-                ErrorType.FILE_ACCESS_DENIED,
-                ErrorSeverity.HIGH,
-                {
-                    operation: 'organizePhotosToFolders',
-                    folderCount: foldersToOrganize.length
-                }
-            );
-            setOrganizingProgress(prev => ({
-                ...prev,
-                status: 'error',
-                error: appError.userMessage
-            }));
+            showOrganizeError(toFileSystemError(error));
+        } finally {
+            organizeAbortRef.current = null;
         }
-    }, [folders, t]);
+    }, [folders, unknownDateLabel, showOrganizeError]);
+
+    const handleCancelOrganize = useCallback(() => {
+        organizeAbortRef.current?.abort();
+    }, []);
 
     const handleCloseProgressModal = useCallback(() => {
         setIsOrganizing(false);
@@ -236,7 +242,15 @@ const FolderOrganizer: React.FC = () => {
     }, []);
 
     const handleGenerateScript = () => {
-        const { blob, filename } = createRenameScriptBlob(folders, formatDateForScript);
+        const operations = folders
+            .filter(folder => folder.isRenamed && folder.newName.trim())
+            .map(folder => ({
+                from: folder.originalName,
+                to: buildFinalFolderName(folder, unknownDateLabel),
+            }))
+            .filter(operation => operation.from !== operation.to);
+        const { content, filename } = createRenameScript(operations, detectScriptPlatform());
+        const blob = new Blob([content], { type: 'text/plain' });
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -302,11 +316,12 @@ const FolderOrganizer: React.FC = () => {
                     </div>
 
                     <div className="mt-8">
-                        <h4 className="text-base font-semibold text-slate-200 mb-3">{t('dateRuleTitle')}</h4>
+                        <h4 id="date-rule-title" className="text-base font-semibold text-slate-200 mb-3">{t('dateRuleTitle')}</h4>
                         <div className="flex justify-center">
-                            <div className="flex items-center space-x-1 p-1 bg-slate-700/50 rounded-lg">
+                            <div role="group" aria-labelledby="date-rule-title" className="flex items-center space-x-1 p-1 bg-slate-700/50 rounded-lg">
                                 <button
                                     onClick={() => setDateLogic('earliest')}
+                                    aria-pressed={dateLogic === 'earliest'}
                                     className={`px-4 py-1 text-sm font-semibold rounded-md transition-all duration-300 ${
                                         dateLogic === 'earliest'
                                             ? 'bg-sky-500 text-white shadow'
@@ -317,6 +332,7 @@ const FolderOrganizer: React.FC = () => {
                                 </button>
                                 <button
                                     onClick={() => setDateLogic('latest')}
+                                    aria-pressed={dateLogic === 'latest'}
                                     className={`px-4 py-1 text-sm font-semibold rounded-md transition-all duration-300 ${
                                         dateLogic === 'latest'
                                             ? 'bg-sky-500 text-white shadow'
@@ -350,7 +366,7 @@ const FolderOrganizer: React.FC = () => {
         return (
             <div className="flex flex-col items-center justify-center min-h-[50vh]">
                 <Spinner />
-                <p className="mt-4 text-lg text-slate-300 font-semibold text-center px-4">{processingMessage}</p>
+                <p role="status" aria-live="polite" className="mt-4 text-lg text-slate-300 font-semibold text-center px-4">{processingMessage}</p>
                 {progress && progress.totalFiles > 0 && (
                     <div className="w-full max-w-md mt-4">
                         <div className="w-full bg-slate-700 rounded-full h-2.5">
@@ -364,13 +380,21 @@ const FolderOrganizer: React.FC = () => {
                         </p>
                     </div>
                 )}
+                <button
+                    onClick={cancel}
+                    className="mt-8 px-4 py-2 bg-slate-700 text-slate-200 font-semibold rounded-lg border border-slate-600 hover:bg-slate-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                    {t('cancel')}
+                </button>
             </div>
         );
     }
     
     if (status === 'done') {
         const anyRenamed = folders.some(f => f.isRenamed);
-        const unsavedChangesCount = folders.filter(f => f.newName.trim() && !f.isRenamed).length;
+        const unsavedChangesCount = folders.filter(
+            f => f.newName.trim() && !f.isRenamed && !nameIssues.has(f.id)
+        ).length;
 
         return (
             <div>
@@ -398,7 +422,8 @@ const FolderOrganizer: React.FC = () => {
                         {isFileSystemAccessSupported() && (
                             <button
                                 onClick={handleOrganizeToComputer}
-                                disabled={folders.filter(f => f.isRenamed).length === 0}
+                                disabled={!anyRenamed}
+                                title={t('organizeToComputerHint')}
                                 className="flex items-center bg-green-600 text-white font-semibold py-2 px-4 rounded-lg border border-green-500 hover:bg-green-700 disabled:bg-slate-600 disabled:text-slate-400 disabled:border-slate-500 disabled:cursor-not-allowed transition-colors duration-200 shadow-sm"
                             >
                                 <ComputerDesktopIcon className="h-5 w-5 mr-2" />
@@ -407,7 +432,7 @@ const FolderOrganizer: React.FC = () => {
                         )}
                         
                         {/* Fallback message for browsers without File System Access API */}
-                        {!isFileSystemAccessSupported() && folders.filter(f => f.isRenamed).length > 0 && (
+                        {!isFileSystemAccessSupported() && anyRenamed && (
                             <div className="flex items-center bg-blue-500/10 border border-blue-400/30 rounded-lg px-4 py-3 text-sm">
                                 <div className="text-blue-300">
                                     <strong>{t('browserCompatibilityTitle')}</strong> {t('fileSystemNotSupported')}
@@ -428,6 +453,28 @@ const FolderOrganizer: React.FC = () => {
                         </button>
                     </div>
                 </div>
+
+                {restoredNameCount > 0 && (
+                    <div className="mb-8 p-4 bg-sky-900/30 border border-sky-500/40 rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <p className="text-sm text-sky-200">
+                            {t('restoredNamesNotice', { count: restoredNameCount })}
+                        </p>
+                        <div className="flex gap-2 flex-shrink-0">
+                            <button
+                                onClick={handleDiscardRestoredNames}
+                                className="px-3 py-1 text-sm font-semibold rounded-md border border-sky-400/40 text-sky-200 hover:bg-sky-800/40 transition-colors"
+                            >
+                                {t('restoredNamesDiscard')}
+                            </button>
+                            <button
+                                onClick={dismissRestoredNotice}
+                                className="px-3 py-1 text-sm font-semibold rounded-md bg-sky-600 text-white hover:bg-sky-700 transition-colors"
+                            >
+                                {t('restoredNamesKeep')}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {skippedFiles.length > 0 && (
                     <div className="mb-8 p-4 bg-amber-900/30 border border-amber-500/40 rounded-lg">
@@ -466,6 +513,7 @@ const FolderOrganizer: React.FC = () => {
                                 folder={folder}
                                 onNameChange={handleNameChange}
                                 onEdit={handleEditFolder}
+                                nameIssue={folder.isRenamed ? undefined : nameIssues.get(folder.id)}
                             />
                         </div>
                     ))}
@@ -493,13 +541,16 @@ const FolderOrganizer: React.FC = () => {
                     isOpen={isOrganizing}
                     progress={organizingProgress}
                     onClose={handleCloseProgressModal}
+                    onCancel={handleCancelOrganize}
                 />
                 
-                {/* Performance Monitor */}
-                <PerformanceMonitor 
-                    isVisible={showPerformanceMonitor}
-                    onToggle={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
-                />
+                {/* Development-only heap monitor */}
+                {import.meta.env.DEV && (
+                    <PerformanceMonitor
+                        isVisible={showPerformanceMonitor}
+                        onToggle={() => setShowPerformanceMonitor(!showPerformanceMonitor)}
+                    />
+                )}
             </div>
         );
     }

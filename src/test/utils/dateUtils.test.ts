@@ -6,7 +6,7 @@
 process.env.TZ = 'Asia/Tokyo'
 
 import { describe, it, expect } from 'vitest'
-import { formatScriptDate } from '../../../utils/dateUtils'
+import { formatScriptDate, pickRepresentativeDate } from '../../../utils/dateUtils'
 
 describe('formatScriptDate', () => {
   it('formats the local calendar date as YYYY-MM-DD', () => {
@@ -26,5 +26,40 @@ describe('formatScriptDate', () => {
 
   it("returns 'unknown' for null", () => {
     expect(formatScriptDate(null)).toBe('unknown')
+  })
+})
+
+describe('pickRepresentativeDate', () => {
+  const jan1 = new Date(2024, 0, 1)
+  const jan5 = new Date(2024, 0, 5)
+  const feb1 = new Date(2024, 1, 1)
+
+  it('picks the earliest or latest EXIF date', () => {
+    const photos = [
+      { exifDate: jan5, fileDate: feb1 },
+      { exifDate: jan1, fileDate: feb1 },
+    ]
+    expect(pickRepresentativeDate(photos, 'earliest')).toEqual({ date: jan1, isEstimated: false })
+    expect(pickRepresentativeDate(photos, 'latest')).toEqual({ date: jan5, isEstimated: false })
+  })
+
+  it('ignores file dates when any photo has an EXIF date', () => {
+    const photos = [
+      { exifDate: null, fileDate: jan1 },
+      { exifDate: jan5, fileDate: feb1 },
+    ]
+    expect(pickRepresentativeDate(photos, 'earliest')).toEqual({ date: jan5, isEstimated: false })
+  })
+
+  it('falls back to file dates, flagged as estimated, when no photo has EXIF', () => {
+    const photos = [
+      { exifDate: null, fileDate: feb1 },
+      { exifDate: null, fileDate: jan5 },
+    ]
+    expect(pickRepresentativeDate(photos, 'earliest')).toEqual({ date: jan5, isEstimated: true })
+  })
+
+  it('returns no date when nothing is known', () => {
+    expect(pickRepresentativeDate([{ exifDate: null, fileDate: null }], 'earliest')).toEqual({ date: null, isEstimated: false })
   })
 })

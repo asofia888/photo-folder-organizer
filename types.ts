@@ -1,54 +1,14 @@
-// Base types for better type safety
-export type NonEmptyString = string & { readonly __brand: unique symbol };
+// Branded strings returned by the validators in utils/typeGuards.ts.
 export type ValidFileName = string & { readonly __brand: unique symbol };
 export type ValidFolderName = string & { readonly __brand: unique symbol };
-export type ISODateString = string & { readonly __brand: unique symbol };
-export type PhotoId = string & { readonly __brand: unique symbol };
-export type FolderId = string & { readonly __brand: unique symbol };
 
-// Utility types for better type inference
-export type RequiredNonNull<T> = {
-  [P in keyof T]-?: NonNullable<T[P]>;
-};
-
-export type DeepReadonly<T> = {
-  readonly [P in keyof T]: T[P] extends object ? DeepReadonly<T[P]> : T[P];
-};
-
-// File processing states
-export const ProcessingStatus = {
-  IDLE: 'idle',
-  PROCESSING: 'processing',
-  DONE: 'done',
-  ERROR: 'error'
-} as const;
-
-export type ProcessingStatus = typeof ProcessingStatus[keyof typeof ProcessingStatus];
-
-// Date logic options
-export const DateLogic = {
-  EARLIEST: 'earliest',
-  LATEST: 'latest'
-} as const;
-
-export type DateLogic = typeof DateLogic[keyof typeof DateLogic];
-
-// Supported image MIME types
-export const SupportedImageMimeType = {
-  JPEG: 'image/jpeg',
-  PNG: 'image/png',
-  WEBP: 'image/webp',
-  GIF: 'image/gif',
-  BMP: 'image/bmp',
-  TIFF: 'image/tiff'
-} as const;
-
-export type SupportedImageMimeType = typeof SupportedImageMimeType[keyof typeof SupportedImageMimeType];
+// Which photo date represents a folder.
+export type DateLogic = 'earliest' | 'latest';
 
 // Supported RAW file extensions
 export const RAW_EXTENSIONS = [
   'cr2', 'cr3',        // Canon
-  'nef', 'nrw',        // Nikon  
+  'nef', 'nrw',        // Nikon
   'arw', 'srf', 'sr2', // Sony
   'dng',               // Adobe
   'raf',               // Fujifilm
@@ -66,51 +26,74 @@ export const RAW_EXTENSIONS = [
   'rwl'                // Leica
 ] as const;
 
-export type RAWExtension = typeof RAW_EXTENSIONS[number];
-
-// Standard (non-RAW) image extensions. Single source of truth shared by the
-// folder scanner and the organize-to-computer validation so they can't diverge.
+// Standard (non-RAW) image extensions. Single source of truth for the folder
+// scanners (drag & drop and the folder picker).
 export const STANDARD_IMAGE_EXTENSIONS = [
-  'jpg', 'jpeg', 'png', 'heic', 'webp', 'gif', 'bmp', 'tiff'
+  'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'gif', 'bmp', 'tif', 'tiff'
 ] as const;
 
-export type StandardImageExtension = typeof STANDARD_IMAGE_EXTENSIONS[number];
-
-// Photo interface with stricter typing - keeping compatible with existing code
 export interface Photo {
-  readonly id: string; // PhotoId for strict typing, but string for compatibility
-  url: string | null; // Can be null before URL creation
-  readonly date: string; // ISODateString for strict typing, but string for compatibility
-  readonly file?: File; // Optional for compatibility
-  readonly isRaw?: boolean; // Flag to indicate if this is a RAW file
-  readonly thumbnailUrl?: string; // RAW-specific thumbnail URL
-  readonly metadata?: Readonly<{
-    width?: number;
-    height?: number;
-    size: number;
-    mimeType: SupportedImageMimeType;
-    lastModified: number;
-    exifData?: Record<string, unknown>;
-  }>;
+  readonly id: string;
+  // ISO timestamp of the date used for this photo ('' when it has none).
+  readonly date: string;
+  readonly file?: File;
+  readonly isRaw?: boolean;
+  // Embedded JPEG preview extracted by the worker (RAW files). Kept as a Blob
+  // so it outlives the worker; components turn it into an object URL.
+  readonly thumbnail?: Blob;
 }
 
-// Folder interface with stricter typing - keeping compatible with existing code
 export interface Folder {
-  readonly id: string; // FolderId for strict typing, but string for compatibility
-  readonly originalName: string; // NonEmptyString for strict typing, but string for compatibility
+  readonly id: string;
+  readonly originalName: string;
   readonly photos: readonly Photo[];
-  readonly representativeDate: Date | null; // Allow null for backward compatibility
+  readonly representativeDate: Date | null;
+  // True when no photo had an EXIF date and the date comes from file
+  // modification times instead.
+  readonly dateIsEstimated?: boolean;
   newName: string;
   isRenamed: boolean;
-  readonly metadata?: Readonly<{
-    totalSize: number;
-    photoCount: number;
-    dateRange: {
-      earliest: Date;
-      latest: Date;
-    };
-  }>;
 }
+
+// Messages between useFolderProcessor and photoProcessor.worker.
+export interface FolderFileGroup {
+  readonly originalName: string;
+  readonly id: string;
+  readonly files: readonly File[];
+}
+
+export interface PhotoProcessingRequest {
+  readonly folderFileGroups: readonly FolderFileGroup[];
+  readonly dateLogic: DateLogic;
+}
+
+export interface ProcessedFolder {
+  readonly id: string;
+  readonly originalName: string;
+  readonly photos: readonly Photo[];
+  readonly representativeDate: Date | null;
+  readonly dateIsEstimated: boolean;
+}
+
+export type PhotoProcessorMessage =
+  | {
+      readonly type: 'start';
+      readonly payload: { totalFolders: number; totalFiles: number; phase: 'processing' };
+    }
+  | {
+      readonly type: 'progress';
+      readonly payload: {
+        processedFolders: number;
+        totalFolders: number;
+        processedFiles: number;
+        totalFiles: number;
+        currentFolderName: string;
+        phase: 'processing';
+      };
+    }
+  | { readonly type: 'file-progress'; readonly payload: { processedFiles: number; totalFiles: number } }
+  | { readonly type: 'done'; readonly payload: readonly ProcessedFolder[]; readonly skippedFiles?: readonly SkippedFile[] }
+  | { readonly type: 'error'; readonly error: string };
 
 // A file the worker dropped from the results, reported to the user on completion
 export interface SkippedFile {
@@ -119,127 +102,6 @@ export interface SkippedFile {
   readonly reason: 'tooLarge' | 'unreadable';
 }
 
-// Processing progress interface
-export interface ProcessingProgress {
-  readonly current: number;
-  readonly total: number;
-  readonly status: 'preparing' | 'processing' | 'complete' | 'error';
-  readonly message?: string;
-  readonly error?: string;
-  readonly phase?: 'scanning' | 'processing' | 'organizing' | 'finalizing';
-}
-
-// Worker message types for type-safe communication
-export interface WorkerMessage<T = unknown> {
-  readonly type: string;
-  readonly payload?: T;
-  readonly error?: string;
-  readonly id?: string;
-}
-
-export interface WorkerProgressMessage extends WorkerMessage<{
-  readonly processedFolders: number;
-  readonly totalFolders: number;
-  readonly processedFiles: number;
-  readonly totalFiles: number;
-  readonly currentFolderName?: string;
-  readonly phase: 'processing' | 'organizing';
-  readonly memoryUsage?: number;
-}> {
-  readonly type: 'progress';
-}
-
-export interface WorkerStartMessage extends WorkerMessage<{
-  readonly totalFolders: number;
-  readonly totalFiles: number;
-  readonly phase: 'processing';
-}> {
-  readonly type: 'start';
-}
-
-export interface WorkerDoneMessage extends WorkerMessage<readonly Folder[]> {
-  readonly type: 'done';
-}
-
-export interface WorkerErrorMessage extends WorkerMessage {
-  readonly type: 'error';
-  readonly error: string;
-}
-
-export type WorkerResponseMessage = 
-  | WorkerProgressMessage 
-  | WorkerStartMessage 
-  | WorkerDoneMessage 
-  | WorkerErrorMessage;
-
-// File system entry types for better type safety
-export interface FileSystemEntryTyped extends FileSystemEntry {
-  readonly name: ValidFileName;
-}
-
-export interface FileSystemDirectoryEntryTyped extends FileSystemDirectoryEntry {
-  readonly name: ValidFolderName;
-  createReader(): FileSystemDirectoryReader;
-}
-
-// Language support
-export const SupportedLanguage = {
-  EN: 'en',
-  JA: 'ja'
-} as const;
-
-export type SupportedLanguage = typeof SupportedLanguage[keyof typeof SupportedLanguage];
-
-// Component prop types with strict generics
-export interface ComponentWithChildren<P = Record<string, unknown>> {
-  children?: React.ReactNode;
-  props?: P;
-}
-
-export interface ComponentWithClassName {
-  className?: string;
-}
-
-// Event handler types
-export type EventHandler<T = Event> = (event: T) => void;
-export type AsyncEventHandler<T = Event> = (event: T) => Promise<void>;
-
-// Utility function return types
-export type Result<T, E = Error> = 
+export type Result<T, E = Error> =
   | { success: true; data: T }
   | { success: false; error: E };
-
-export type AsyncResult<T, E = Error> = Promise<Result<T, E>>;
-
-// Memory management types
-export interface MemoryStats {
-  readonly objectUrlCount: number;
-  readonly canvasCacheSize: number;
-  readonly estimatedMemoryUsage: string;
-  readonly isHighMemory: boolean;
-  readonly systemMemory?: Readonly<{
-    usedJSHeapSize: number;
-    totalJSHeapSize: number;
-    jsHeapSizeLimit: number;
-    utilization: number;
-  }>;
-}
-
-// Error handling types (referencing errorHandler types)
-export interface ErrorContext {
-  readonly [key: string]: unknown;
-}
-
-export interface AppError {
-  readonly id: string;
-  readonly type: string;
-  readonly severity: string;
-  readonly message: string;
-  readonly userMessage: string;
-  readonly timestamp: Date;
-  readonly context?: ErrorContext;
-  readonly originalError?: Error;
-  canRetry: boolean;
-  retryCount: number;
-  readonly maxRetries: number;
-}
