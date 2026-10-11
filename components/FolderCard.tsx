@@ -1,21 +1,18 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { Folder, Photo } from '../types';
+import React, { useState } from 'react';
+import { Photo } from '../types';
 import { FolderCardProps } from '../types/componentTypes';
 import Thumbnail from './Thumbnail';
 import ImageModal from './ImageModal';
 import { FolderIcon, CheckCircleIcon, ClipboardIcon, PencilSquareIcon } from './Icons';
 import { useLanguage } from '../contexts/LanguageContext';
-import { isNonEmptyString, createNonEmptyString } from '../utils/typeGuards';
+import { formatScriptDate } from '../utils/dateUtils';
 
-const FolderCard: React.FC<FolderCardProps> = ({ 
-  folder, 
-  onNameChange, 
+const FolderCard: React.FC<FolderCardProps> = ({
+  folder,
+  onNameChange,
   onEdit,
-  maxThumbnails = 4,
-  showMetadata = false,
-  isCompact = false,
-  className
+  maxThumbnails = 4
 }) => {
     const { t } = useLanguage();
     const [copied, setCopied] = useState(false);
@@ -24,7 +21,7 @@ const FolderCard: React.FC<FolderCardProps> = ({
 
     const formatDate = (date: Date | null): string => {
         if (!date) return t('unknownDate');
-        return date.toISOString().split('T')[0];
+        return formatScriptDate(date);
     };
     
 

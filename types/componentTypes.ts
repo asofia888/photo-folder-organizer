@@ -4,14 +4,9 @@ import React from 'react';
 import {
   Folder,
   Photo,
-  FolderId,
-  PhotoId,
   ProcessingStatus,
   DateLogic,
   ProcessingProgress,
-  NonEmptyString,
-  ValidFileName,
-  ValidFolderName,
   ComponentWithClassName,
   EventHandler,
   AsyncEventHandler,
@@ -294,11 +289,11 @@ export type ConditionalProps<T, K extends keyof T> = T[K] extends true
 
 // Utility types for component composition
 export type PropsWithoutRef<P> = P & React.RefAttributes<never>;
-export type PropsWithRef<T, P = {}> = P & React.RefAttributes<T>;
+export type PropsWithRef<T, P = Record<string, unknown>> = P & React.RefAttributes<T>;
 
 // Higher-order component types
 export type HOCProps<P> = P & {
   readonly forwardedRef?: React.Ref<any>;
 };
 
-export type WithHOC<P, H = {}> = React.ComponentType<P & H>;
+export type WithHOC<P, H = Record<string, unknown>> = React.ComponentType<P & H>;

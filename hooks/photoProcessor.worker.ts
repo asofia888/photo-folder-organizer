@@ -2,6 +2,8 @@
 // Web Worker for processing photo data without blocking the main thread.
 // exifr is bundled by Vite (no CDN dependency).
 import exifr from 'exifr';
+import { isRawFileName } from '../utils/typeGuards';
+import type { SkippedFile } from '../types';
 
 const FILE_SIZE_LIMITS = {
     SKIP: 100 * 1024 * 1024,     // 100MB - Skip completely
@@ -10,11 +12,6 @@ const FILE_SIZE_LIMITS = {
 };
 
 const BATCH_SIZE = 8; // Process files in batches to reduce memory pressure
-
-// RAW file detection
-const isRawFile = (fileName: string): boolean => {
-    return /\.(cr2|cr3|nef|nrw|arw|srf|sr2|dng|raf|orf|rw2|pef|srw|x3f|kdc|dcr|mrw|3fr|fff|iiq|rwl)$/i.test(fileName);
-};
 
 // RAW file size limits
 const RAW_FILE_SIZE_LIMITS = {
@@ -27,6 +24,7 @@ self.onmessage = async (e: MessageEvent) => {
     try {
         const { folderFileGroups, dateLogic } = e.data;
         const allProcessedFolders: any[] = [];
+        const skippedFiles: SkippedFile[] = [];
         const totalFolders = folderFileGroups.length;
         const totalFiles = folderFileGroups.reduce((sum: number, group: any) => sum + group.files.length, 0);
         let processedFiles = 0;
@@ -47,14 +45,15 @@ self.onmessage = async (e: MessageEvent) => {
 
             // Filter files by size before processing (different limits for RAW vs regular files)
             const validFiles = group.files.filter((file: File) => {
-                const sizeLimit = isRawFile(file.name) ? RAW_FILE_SIZE_LIMITS.SKIP : FILE_SIZE_LIMITS.SKIP;
+                const sizeLimit = isRawFileName(file.name) ? RAW_FILE_SIZE_LIMITS.SKIP : FILE_SIZE_LIMITS.SKIP;
                 if (file.size > sizeLimit) {
                     console.warn('Skipping large file:', file.name, 'Size:', Math.round(file.size / 1024 / 1024) + 'MB');
+                    skippedFiles.push({ folderName: group.originalName, fileName: file.name, reason: 'tooLarge' });
                     return false;
                 }
 
                 // Warn for large RAW files
-                if (isRawFile(file.name) && file.size > RAW_FILE_SIZE_LIMITS.WARNING) {
+                if (isRawFileName(file.name) && file.size > RAW_FILE_SIZE_LIMITS.WARNING) {
                     console.warn('Large RAW file detected:', file.name, 'Size:', Math.round(file.size / 1024 / 1024) + 'MB');
                 }
 
@@ -92,7 +91,7 @@ self.onmessage = async (e: MessageEvent) => {
                         let thumbnailUrl: string | null = null;
                         let isRaw = false;
 
-                        if (isRawFile(file.name)) {
+                        if (isRawFileName(file.name)) {
                             isRaw = true;
 
                             // Process RAW file
@@ -107,7 +106,7 @@ self.onmessage = async (e: MessageEvent) => {
 
                                 // Try to extract thumbnail
                                 try {
-                                    const thumbnailBuffer = await (exifr as any).extractThumbnail(file);
+                                    const thumbnailBuffer = await exifr.thumbnail(file);
                                     if (thumbnailBuffer && thumbnailBuffer.byteLength > 0) {
                                         const thumbnailBlob = new Blob([thumbnailBuffer], {
                                             type: 'image/jpeg'
@@ -132,7 +131,7 @@ self.onmessage = async (e: MessageEvent) => {
                                     reviveValues: true
                                 });
                                 date = exifData?.DateTimeOriginal || exifData?.CreateDate || null;
-                            } catch (exifError) {
+                            } catch {
                                 // Expected for files without EXIF
                             }
                         }
@@ -146,6 +145,7 @@ self.onmessage = async (e: MessageEvent) => {
                         };
                     } catch (fileError) {
                         console.error('Error processing file in worker:', file.name, fileError);
+                        skippedFiles.push({ folderName: group.originalName, fileName: file.name, reason: 'unreadable' });
                         return null;
                     }
                 });
@@ -198,7 +198,7 @@ self.onmessage = async (e: MessageEvent) => {
             });
         }
 
-        self.postMessage({ type: 'done', payload: allProcessedFolders });
+        self.postMessage({ type: 'done', payload: allProcessedFolders, skippedFiles });
     } catch (workerError: any) {
         console.error('Unhandled error in worker:', workerError);
         self.postMessage({ type: 'error', error: workerError.message || 'An unknown error occurred in the background processor.' });

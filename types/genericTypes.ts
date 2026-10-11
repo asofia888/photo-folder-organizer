@@ -27,10 +27,14 @@ export type KeysOfType<T, U> = {
 }[keyof T];
 
 export type RequiredKeys<T> = {
+  // `{} extends Pick<T, K>` is the standard optionality probe — `{}` is
+  // intentional here and must not be replaced with object/unknown.
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
 }[keyof T];
 
 export type OptionalKeys<T> = {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   [K in keyof T]-?: {} extends Pick<T, K> ? K : never;
 }[keyof T];
 

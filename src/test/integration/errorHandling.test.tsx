@@ -8,7 +8,6 @@ import { ErrorNotificationContainer } from '../../../components/ErrorNotificatio
 // skipped below until it is rewritten against the real components
 // (FolderOrganizer / ErrorNotification).
 import FolderProcessor from '../../../components/FolderOrganizer'
-import { createMockFileSystemDirectoryEntry, createMockFile } from '../test-utils'
 
 // Mock Web Worker
 const mockWorker = {
@@ -73,7 +72,7 @@ describe.skip('Error Handling Integration', () => {
       fireEvent.click(detailsButton)
 
       expect(screen.getByText('PROCESSING_FAILED')).toBeInTheDocument()
-      expect(screen.getByText(/\"operation\": \"folder-processing\"/)).toBeInTheDocument()
+      expect(screen.getByText(/"operation": "folder-processing"/)).toBeInTheDocument()
     })
 
     it('should handle worker errors and show notifications', async () => {
@@ -146,15 +145,6 @@ describe.skip('Error Handling Integration', () => {
   describe('Error Recovery Integration', () => {
     it('should handle successful retry operations', async () => {
       render(<ErrorNotificationContainer />)
-
-      let retryCount = 0
-      const mockRetry = vi.fn().mockImplementation(async () => {
-        retryCount++
-        if (retryCount === 1) {
-          throw new Error('Still failing')
-        }
-        return 'success'
-      })
 
       // Trigger recoverable error
       act(() => {
@@ -309,8 +299,8 @@ describe.skip('Error Handling Integration', () => {
       fireEvent.click(detailsButton)
 
       expect(screen.getByText('Context:')).toBeInTheDocument()
-      expect(screen.getByText(/\"operation\": \"image-processing\"/)).toBeInTheDocument()
-      expect(screen.getByText(/\"fileName\": \"photo.jpg\"/)).toBeInTheDocument()
+      expect(screen.getByText(/"operation": "image-processing"/)).toBeInTheDocument()
+      expect(screen.getByText(/"fileName": "photo.jpg"/)).toBeInTheDocument()
     })
 
     it('should display technical error details', async () => {

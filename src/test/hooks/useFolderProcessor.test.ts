@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook as renderHookBase, act, waitFor } from '@testing-library/react'
+import { renderHook as renderHookBase, act } from '@testing-library/react'
 import { useFolderProcessor } from '../../../hooks/useFolderProcessor'
 import { createMockFileSystemDirectoryEntry, createMockFile, mockWorkerResponse } from '../test-utils'
 import MemoryManager from '../../../utils/memoryManager'
@@ -184,7 +184,7 @@ describe('useFolderProcessor', () => {
       await act(async () => {
         try {
           await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch (error) {
+        } catch {
           // Expected to throw
         }
       })
@@ -226,7 +226,7 @@ describe('useFolderProcessor', () => {
       await act(async () => {
         try {
           await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch (error) {
+        } catch {
           // Expected to throw
         }
       })
@@ -390,7 +390,7 @@ describe('useFolderProcessor', () => {
       await act(async () => {
         try {
           await result.current.processDirectory(mockDirectory, 'earliest')
-        } catch (error) {
+        } catch {
           // Expected to throw and be handled
         }
       })

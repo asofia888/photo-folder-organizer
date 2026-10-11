@@ -97,6 +97,21 @@ export const translations = {
     notificationWarning: 'Warning',
     notificationInfo: 'Info',
     notificationSuccess: 'Success',
+    // Folder picker & processing status
+    dropZoneClickHint: 'Or click to choose a folder.',
+    gatheringFiles: 'Gathering files to process...',
+    creatingThumbnails: 'Creating thumbnails...',
+    processingFolderMessage: 'Processing folder {folderProgress} ({fileProgress} files) - {folderName}',
+    // Organize to computer
+    invalidFolderNameAlert: 'Invalid folder name: {name}',
+    fixFolderNamesAlert: 'Please fix these folder names:',
+    noFoldersReadyAlert: 'No folders are ready to organize. Please rename at least one folder.',
+    organizeHintChromeEdge: 'Use Chrome or Edge for direct "Organize to Computer" functionality.',
+    // Skipped files
+    skippedFilesNotice: '{count} file(s) were skipped and are not included in the results.',
+    skippedFilesShowDetails: 'Show skipped files',
+    skipReasonTooLarge: 'File too large',
+    skipReasonUnreadable: 'Could not be read',
   },
   ja: {
     appTitle: '写真フォルダ整理アプリ',
@@ -194,10 +209,26 @@ export const translations = {
     notificationWarning: '警告',
     notificationInfo: '情報',
     notificationSuccess: '成功',
+    // Folder picker & processing status
+    dropZoneClickHint: 'またはクリックしてフォルダを選択できます。',
+    gatheringFiles: '処理するファイルを収集中...',
+    creatingThumbnails: 'サムネイルを作成中...',
+    processingFolderMessage: 'フォルダを処理中 {folderProgress}（{fileProgress} ファイル）- {folderName}',
+    // Organize to computer
+    invalidFolderNameAlert: '無効なフォルダ名: {name}',
+    fixFolderNamesAlert: '次のフォルダ名を修正してください:',
+    noFoldersReadyAlert: '整理できるフォルダがありません。少なくとも1つのフォルダ名を保存してください。',
+    organizeHintChromeEdge: 'Chrome・Edgeなら「コンピューターに整理」ボタンで直接整理できます。',
+    // Skipped files
+    skippedFilesNotice: '{count} 個のファイルはスキップされたため、結果に含まれていません。',
+    skippedFilesShowDetails: 'スキップされたファイルを表示',
+    skipReasonTooLarge: 'サイズ超過',
+    skipReasonUnreadable: '読み込み失敗',
   }
 };
 
 export type Locale = keyof typeof translations;
+export type TranslationKey = keyof typeof translations.en;
 
 export const getInitialLocale = (): Locale => {
   if (typeof window !== 'undefined' && window.navigator) {
@@ -207,4 +238,26 @@ export const getInitialLocale = (): Locale => {
     }
   }
   return 'en';
+};
+
+// Current locale readable outside React components (e.g. errorHandler builds
+// user-facing messages without access to the LanguageContext).
+// LanguageProvider keeps this in sync via setCurrentLocale.
+let currentLocale: Locale = getInitialLocale();
+
+export const setCurrentLocale = (locale: Locale): void => {
+  currentLocale = locale;
+};
+
+export const translate = (
+  key: TranslationKey,
+  replacements?: { [key: string]: string | number }
+): string => {
+  let translation: string = translations[currentLocale][key] || translations.en[key];
+  if (replacements) {
+    Object.entries(replacements).forEach(([k, v]) => {
+      translation = translation.replace(`{${k}}`, String(v));
+    });
+  }
+  return translation;
 };
