@@ -27,8 +27,8 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      # Lint gates on errors; no-explicit-any is reported as warnings while
-      # legacy `any`s are burned down, so warnings do not fail the build.
+      # Lint gates on errors (including `any` in app code); `any` in test
+      # doubles is only a warning.
       - name: Lint
         run: npm run lint
 

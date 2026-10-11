@@ -11,15 +11,21 @@ export default tseslint.config(
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      // The codebase still carries legacy `any`s (worker payloads etc.);
-      // keep them visible as warnings without blocking CI while they are
-      // burned down. New code should avoid `any` — casts like the former
-      // `(exifr as any).extractThumbnail` hid a real production bug.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // Casts like the former `(exifr as any).extractThumbnail` hid a real
+      // production bug, so app code may not use `any`.
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
+    },
+  },
+  {
+    // Test doubles for browser APIs (workers, directory readers) are loosely
+    // typed on purpose; keep `any` visible there without failing CI.
+    files: ['src/test/**/*.{ts,tsx}', 'vitest.config.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
 );
